@@ -44,7 +44,6 @@ export default function VoicePanel({
 }: VoicePanelProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
-  const [lastReply, setLastReply] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<WilsonAction | undefined>();
   const [typed, setTyped] = useState("");
   const [sessionId] = useState(createId);
@@ -84,7 +83,6 @@ export default function VoicePanel({
         const reply = await sendMessage(text, sessionId);
         replyArrived = true;
         clearTimeout(cue);
-        setLastReply(reply.text);
         setLastAction(reply.action);
         // Gesprochen wird nur der Fließtext: Aktionsmarker sind schon
         // serverseitig raus, Markdown und URLs entfernt der Sanitizer.
@@ -212,16 +210,6 @@ export default function VoicePanel({
               </>
             )}
           </div>
-        )}
-
-        {/* Untertitel: hilft bei Lärm, schlechter Verbindung und
-            Barrierefreiheit. Bewusst auf drei Zeilen begrenzt – der
-            vollständige Text steht ohnehin im Chat, und ein scrollender
-            Kasten würde das halbe Gesicht verdecken. */}
-        {isLive && lastReply && (
-          <p className="absolute inset-x-0 bottom-0 line-clamp-3 bg-gradient-to-t from-black/90 via-black/70 to-transparent px-3 pb-2 pt-6 text-[11px] leading-snug text-white">
-            {lastReply}
-          </p>
         )}
       </div>
 
