@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { prewarmSpeech } from "@/lib/tts";
+import { PREWARM_LINES } from "@/lib/voiceLines";
 
 /**
  * Mintet ein kurzlebiges LiveAvatar-Session-Token für den Browser.
@@ -20,7 +22,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
  * längere Sitzungen erlaubt (Free: 2 Min, Starter: 5, Essential: 20).
  */
 const MAX_SESSION_SECONDS = Number(
-  process.env.LIVEAVATAR_MAX_SESSION_SECONDS ?? 120
+  process.env.LIVEAVATAR_MAX_SESSION_SECONDS ?? 120,
 );
 
 export async function POST() {
@@ -28,9 +30,14 @@ export async function POST() {
     // Kein 500: Der Sprachmodus ist optional, die UI blendet ihn dann aus.
     return NextResponse.json(
       { error: "Sprachmodus ist nicht konfiguriert." },
-      { status: 503 }
+      { status: 503 },
     );
   }
+
+  // Hier beginnt ein Gespräch: Begrüßung und Füllsätze im Hintergrund
+  // vertonen. Der Verbindungsaufbau dauert rund drei Sekunden – genug,
+  // damit beides fertig ist, bevor es gebraucht wird.
+  prewarmSpeech(PREWARM_LINES);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -57,11 +64,11 @@ export async function POST() {
     if (!response.ok) {
       const detail = await response.text();
       console.error(
-        `LiveAvatar-Token fehlgeschlagen (HTTP ${response.status}): ${detail}`
+        `LiveAvatar-Token fehlgeschlagen (HTTP ${response.status}): ${detail}`,
       );
       return NextResponse.json(
         { error: "Wilma kann gerade nicht sprechen." },
-        { status: 502 }
+        { status: 502 },
       );
     }
 
@@ -77,7 +84,7 @@ export async function POST() {
       console.error("LiveAvatar-Antwort ohne session_token:", payload);
       return NextResponse.json(
         { error: "Wilma kann gerade nicht sprechen." },
-        { status: 502 }
+        { status: 502 },
       );
     }
 
@@ -90,7 +97,7 @@ export async function POST() {
     console.error("Fehler beim Anlegen der LiveAvatar-Session:", error);
     return NextResponse.json(
       { error: "Wilma kann gerade nicht sprechen." },
-      { status: 502 }
+      { status: 502 },
     );
   } finally {
     clearTimeout(timeout);

@@ -247,19 +247,37 @@ Wechsel auf einen größeren Plan diesen Wert anheben.
 
 ### Antwortzeit
 
-Gemessen: n8n braucht **3–8 Sekunden**, die Sprachausgabe 1,5–2,5. Damit
-Wilma nicht stumm dasteht, greifen zwei Mechanismen:
+Gemessen: n8n braucht **2–8 Sekunden**, die Sprachausgabe 1,5–2,8. Vier
+Mechanismen sorgen dafür, dass Wilma trotzdem sofort reagiert:
 
+- **Begrüßung beim Start** – sie meldet sich von selbst, sobald das Bild da
+  ist. Ihre Vertonung läuft *parallel* zum Verbindungsaufbau, ist also
+  fertig, bevor sie gebraucht wird.
+- **Vorgewärmter Zwischenspeicher** – Begrüßung und Füllsätze sind bei jedem
+  Gespräch wortgleich. `/api/avatar/session` vertont sie beim Gesprächsstart
+  im Hintergrund (`prewarmSpeech`), danach kommen sie in ~20 ms statt 2 s.
 - **Satzweise Vertonung** – die Antwort wird in Stücke zerlegt, alle
-  gleichzeitig vertont und der Reihe nach gesprochen. Sie beginnt, sobald
-  der erste Satz fertig ist.
-- **Zwischenruf** – dauert es länger als 1,2 s, sagt sie „Einen Moment, ich
-  schaue kurz nach". Ist die Antwort vorher da, verstummt der Zwischenruf
-  wieder, statt überflüssig abgespielt zu werden.
+  gleichzeitig vertont und der Reihe nach gesprochen. Sie beginnt beim
+  ersten Satz statt am Ende des Absatzes.
+- **Zwischenruf** – dauert n8n länger als 1,2 s, sagt sie „Einen Moment, ich
+  schaue kurz nach". Ist die Antwort vorher da, verstummt er wieder, statt
+  überflüssig abgespielt zu werden.
 
-Wilma reagiert damit nach **rund 2,5 Sekunden**, unabhängig davon, wie lange
-n8n rechnet. Der Flaschenhals bleibt der n8n-Agent – dort liegt der Hebel,
-wenn es schneller werden soll.
+Dazu werden Token und SDK schon beim Öffnen des Sprachmodus geholt
+(`prepare()`) – das Anlegen eines Tokens kostet nichts, abgerechnet wird
+erst der Verbindungsaufbau.
+
+Ergebnis:
+
+| | Zeit |
+|---|---|
+| Begrüßung nach „Gespräch starten" | **~2,9 s** (davon 3,0 s Verbindungsaufbau bei LiveAvatar) |
+| Reaktion auf eine Frage | **~1,2 s** |
+| vollständige Antwort | n8n + 1,5–2,8 s |
+
+Der verbleibende Flaschenhals ist der n8n-Agent. Die drei Sekunden
+Verbindungsaufbau liegen bei LiveAvatar und lassen sich nur umgehen, indem
+man eine Sitzung offen hält – was pro Minute abgerechnet würde.
 
 ### Bekannte Einschränkungen
 - **Spracheingabe** nutzt die Web Speech API und läuft damit zuverlässig nur

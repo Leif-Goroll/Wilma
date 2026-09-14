@@ -7,6 +7,7 @@ import { useLiveAvatar } from "@/hooks/useLiveAvatar";
 import CalendlyButton from "@/components/CalendlyButton";
 import { createId } from "@/lib/id";
 import { toSpeakableText } from "@/lib/speakableText";
+import { GREETING, THINKING_CUES } from "@/lib/voiceLines";
 import { sendMessage } from "@/lib/wilsonChannel";
 import type { WilmaAvatarState } from "@/components/WilmaAvatar";
 import type { WilsonAction } from "@/lib/types";
@@ -23,16 +24,10 @@ import type { WilsonAction } from "@/lib/types";
  */
 
 /**
- * Überbrückt die Denkpause. Der n8n-Agent braucht 6–8 Sekunden; ohne
- * Zwischenruf steht Wilma so lange stumm da, was im Gespräch wie ein
- * Verbindungsabbruch wirkt. Erst ab einer spürbaren Wartezeit, damit es
- * bei schnellen Antworten nicht albern klingt.
+ * Wie lange gewartet wird, bevor Wilma die Denkpause überbrückt. Der
+ * n8n-Agent braucht je nach Frage 2–8 Sekunden; ohne Zwischenruf steht sie
+ * so lange stumm da, was im Gespräch wie ein Verbindungsabbruch wirkt.
  */
-const THINKING_CUES = [
-  "Einen Moment, ich schaue kurz nach.",
-  "Sekunde, das prüfe ich eben.",
-  "Lassen Sie mich kurz überlegen.",
-];
 const THINKING_CUE_DELAY_MS = 1200;
 
 interface VoicePanelProps {
@@ -54,8 +49,22 @@ export default function VoicePanel({
   const [typed, setTyped] = useState("");
   const [sessionId] = useState(createId);
 
-  const { connection, error, videoRef, start, stop, speak, interrupt } =
-    useLiveAvatar({ onSpeakingChange: setIsSpeaking });
+  const {
+    connection,
+    error,
+    videoRef,
+    prepare,
+    start,
+    stop,
+    speak,
+    interrupt,
+  } = useLiveAvatar({ onSpeakingChange: setIsSpeaking });
+
+  // Sobald jemand den Sprachmodus öffnet, Token und SDK im Hintergrund
+  // besorgen. Der Klick auf "Gespräch starten" findet dann alles vor.
+  useEffect(() => {
+    prepare();
+  }, [prepare]);
 
   const handleTranscript = useCallback(
     async (text: string) => {
@@ -325,7 +334,7 @@ export default function VoicePanel({
 
         <button
           type="button"
-          onClick={isLive ? () => void stop() : () => void start()}
+          onClick={isLive ? () => void stop() : () => void start(GREETING)}
           disabled={connection === "connecting" || connection === "unavailable"}
           className={`flex h-11 items-center justify-center rounded-lg px-4 text-sm font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
             isLive

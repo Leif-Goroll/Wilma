@@ -16,12 +16,20 @@ import { splitIntoSpeechChunks } from "@/lib/speakableText";
  * Aushängen der Komponente zuverlässig beendet.
  */
 
+/** Holt die Sprachausgabe für einen Textabschnitt. */
+async function synthesize(text: string): Promise<string | null> {
+  const response = await fetch("/api/avatar/speak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) return null;
+  const { audio } = (await response.json()) as { audio: string };
+  return audio;
+}
+
 export type AvatarConnection =
-  | "idle"
-  | "connecting"
-  | "live"
-  | "unavailable"
-  | "error";
+  "idle" | "connecting" | "live" | "unavailable" | "error";
 
 interface SpeakOptions {
   /**
@@ -63,6 +71,9 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
   // Verhindert, dass eine Antwort noch abgespielt wird, nachdem der Nutzer
   // das Gespräch bereits beendet hat.
   const activeRef = useRef(false);
+  // Vorab geholtes Token. Das Anlegen kostet nichts – abgerechnet wird erst
+  // session.start() –, spart beim Klick aber den Netzabruf.
+  const preparedRef = useRef<Promise<string | null> | null>(null);
 
   const stop = useCallback(async () => {
     activeRef.current = false;
@@ -87,97 +98,146 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
     };
   }, [stop]);
 
-  const start = useCallback(async () => {
-    if (sessionRef.current) return;
+  /**
+   * Holt Token und SDK schon beim Öffnen des Sprachmodus, bevor jemand
+   * "Gespräch starten" drückt. Abgerechnet wird erst beim tatsächlichen
+   * Verbindungsaufbau, hier entsteht also kein Verbrauch.
+   */
+  const prepare = useCallback(() => {
+    if (preparedRef.current) return;
 
-    setConnection("connecting");
-    setError(null);
+    void import("@heygen/liveavatar-web-sdk");
 
-    let startedSession: LiveAvatarSession | null = null;
+    preparedRef.current = fetch("/api/avatar/session", { method: "POST" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const { sessionToken } = (await response.json()) as {
+          sessionToken: string;
+        };
+        return sessionToken;
+      })
+      .catch(() => null);
+  }, []);
 
-    try {
-      const response = await fetch("/api/avatar/session", { method: "POST" });
+  const start = useCallback(
+    async (greeting?: string) => {
+      if (sessionRef.current) return;
 
-      if (response.status === 503) {
-        setConnection("unavailable");
-        setError("Der Sprachmodus ist auf diesem Server nicht eingerichtet.");
-        return;
-      }
+      setConnection("connecting");
+      setError(null);
 
-      if (!response.ok) {
-        setConnection("error");
-        setError("Wilma kann gerade nicht sprechen.");
-        return;
-      }
+      let startedSession: LiveAvatarSession | null = null;
 
-      const { sessionToken } = (await response.json()) as {
-        sessionToken: string;
-      };
+      try {
+        // Vorab geholtes Token nutzen, sonst jetzt eines besorgen.
+        let sessionToken = await (preparedRef.current ?? Promise.resolve(null));
+        preparedRef.current = null;
 
-      // Erst hier laden: Das SDK zieht livekit-client mit und hat im
-      // Startbundle des Widgets nichts verloren – der Chat-Weg soll
-      // schnell bleiben.
-      const { LiveAvatarSession, SessionEvent, AgentEventsEnum } = await import(
-        "@heygen/liveavatar-web-sdk"
-      );
+        if (!sessionToken) {
+          const response = await fetch("/api/avatar/session", {
+            method: "POST",
+          });
 
-      // voiceChat: false – das Mikrofon steuern wir selbst über die
-      // Web Speech API, weil n8n und nicht LiveAvatar antworten soll.
-      const session = new LiveAvatarSession(sessionToken, { voiceChat: false });
-      startedSession = session;
+          if (response.status === 503) {
+            setConnection("unavailable");
+            setError(
+              "Der Sprachmodus ist auf diesem Server nicht eingerichtet.",
+            );
+            return;
+          }
 
-      session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () =>
-        onSpeakingChange?.(true)
-      );
-      session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () =>
-        onSpeakingChange?.(false)
-      );
-      // Erst wenn das SDK den Stream meldet, lässt er sich ans <video>
-      // hängen – vorher quittiert attach() mit "Stream is not yet ready".
-      session.on(SessionEvent.SESSION_STREAM_READY, () => {
-        if (videoRef.current) session.attach(videoRef.current);
-      });
+          if (!response.ok) {
+            setConnection("error");
+            setError("Wilma kann gerade nicht sprechen.");
+            return;
+          }
 
-      session.on(SessionEvent.SESSION_DISCONNECTED, () => {
+          ({ sessionToken } = (await response.json()) as {
+            sessionToken: string;
+          });
+        }
+
+        // Sofort anstoßen, nicht erst nach dem Verbinden: Der Aufbau dauert
+        // rund drei Sekunden, die Vertonung knapp zwei. Nebeneinander
+        // ausgeführt steht die Begrüßung genau dann bereit, wenn das Bild
+        // erscheint – statt danach noch einmal warten zu lassen.
+        const greetingAudio = greeting ? synthesize(greeting) : null;
+
+        // Erst hier laden: Das SDK zieht livekit-client mit und hat im
+        // Startbundle des Widgets nichts verloren – der Chat-Weg soll
+        // schnell bleiben.
+        const { LiveAvatarSession, SessionEvent, AgentEventsEnum } =
+          await import("@heygen/liveavatar-web-sdk");
+
+        // voiceChat: false – das Mikrofon steuern wir selbst über die
+        // Web Speech API, weil n8n und nicht LiveAvatar antworten soll.
+        const session = new LiveAvatarSession(sessionToken, {
+          voiceChat: false,
+        });
+        startedSession = session;
+
+        session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () =>
+          onSpeakingChange?.(true),
+        );
+        session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () =>
+          onSpeakingChange?.(false),
+        );
+        // Erst wenn das SDK den Stream meldet, lässt er sich ans <video>
+        // hängen – vorher quittiert attach() mit "Stream is not yet ready".
+        session.on(SessionEvent.SESSION_STREAM_READY, () => {
+          if (videoRef.current) session.attach(videoRef.current);
+        });
+
+        session.on(SessionEvent.SESSION_DISCONNECTED, () => {
+          sessionRef.current = null;
+          activeRef.current = false;
+          onSpeakingChange?.(false);
+          setConnection("idle");
+        });
+
+        await session.start();
+
+        // Falls der Stream schon vor dem Registrieren des Handlers bereitstand.
+        if (videoRef.current) {
+          try {
+            session.attach(videoRef.current);
+          } catch {
+            // Dann übernimmt der SESSION_STREAM_READY-Handler.
+          }
+        }
+
+        sessionRef.current = session;
+        activeRef.current = true;
+        setConnection("live");
+
+        if (greetingAudio) {
+          const audio = await greetingAudio.catch(() => null);
+          // Zwischen Verbinden und Begrüßung kann längst abgebrochen worden sein.
+          if (audio && activeRef.current && sessionRef.current === session) {
+            session.repeatAudio(audio);
+          }
+        }
+      } catch (caught) {
+        console.error("LiveAvatar-Session fehlgeschlagen:", caught);
+
+        // Halb aufgebaute Sitzung abräumen. Ohne das bleibt im SDK eine
+        // Verbindung zurück, die später mit "Session not found" abstürzt.
+        if (startedSession) {
+          try {
+            await startedSession.stop();
+          } catch {
+            // Sie kam nie zustande – dann gibt es auch nichts zu beenden.
+          }
+        }
         sessionRef.current = null;
         activeRef.current = false;
-        onSpeakingChange?.(false);
-        setConnection("idle");
-      });
 
-      await session.start();
-
-      // Falls der Stream schon vor dem Registrieren des Handlers bereitstand.
-      if (videoRef.current) {
-        try {
-          session.attach(videoRef.current);
-        } catch {
-          // Dann übernimmt der SESSION_STREAM_READY-Handler.
-        }
+        setConnection("error");
+        setError(describeStartFailure(caught));
       }
-
-      sessionRef.current = session;
-      activeRef.current = true;
-      setConnection("live");
-    } catch (caught) {
-      console.error("LiveAvatar-Session fehlgeschlagen:", caught);
-
-      // Halb aufgebaute Sitzung abräumen. Ohne das bleibt im SDK eine
-      // Verbindung zurück, die später mit "Session not found" abstürzt.
-      if (startedSession) {
-        try {
-          await startedSession.stop();
-        } catch {
-          // Sie kam nie zustande – dann gibt es auch nichts zu beenden.
-        }
-      }
-      sessionRef.current = null;
-      activeRef.current = false;
-
-      setConnection("error");
-      setError(describeStartFailure(caught));
-    }
-  }, [onSpeakingChange]);
+    },
+    [onSpeakingChange],
+  );
 
   /**
    * Lässt Wilma den übergebenen Text aussprechen.
@@ -194,24 +254,13 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
     const chunks = splitIntoSpeechChunks(text);
     if (chunks.length === 0) return;
 
-    async function synthesize(chunk: string): Promise<string | null> {
-      const response = await fetch("/api/avatar/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: chunk }),
-      });
-      if (!response.ok) return null;
-      const { audio } = (await response.json()) as { audio: string };
-      return audio;
-    }
-
     // Parallel anstoßen, damit die späteren Stücke schon entstehen, während
     // das erste bereits gesprochen wird.
     const pending = chunks.map((chunk) =>
       synthesize(chunk).catch((caught) => {
         console.error("Sprachausgabe fehlgeschlagen:", caught);
         return null;
-      })
+      }),
     );
 
     for (const request of pending) {
@@ -243,5 +292,14 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
     }
   }, []);
 
-  return { connection, error, videoRef, start, stop, speak, interrupt };
+  return {
+    connection,
+    error,
+    videoRef,
+    prepare,
+    start,
+    stop,
+    speak,
+    interrupt,
+  };
 }
