@@ -8,10 +8,29 @@ import "server-only";
  * genau dieses Format aus – es ist also keine Umkodierung nötig.
  */
 
-const API_KEY = process.env.OPENAI_API_KEY;
-const MODEL = process.env.OPENAI_TTS_MODEL ?? "gpt-4o-mini-tts";
-const VOICE = process.env.OPENAI_TTS_VOICE ?? "coral";
+/**
+ * Anbieter der Sprachausgabe. Beide liefern PCM 16 Bit / 24 kHz – genau
+ * das Format, das LiveAvatar erwartet –, es ist also keine Umkodierung
+ * nötig und der Wechsel bleibt eine Einstellung.
+ */
+type Provider = "openai" | "gemini";
+
+const PROVIDER: Provider =
+  process.env.TTS_PROVIDER === "gemini" ? "gemini" : "openai";
+
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_MODEL = process.env.OPENAI_TTS_MODEL ?? "gpt-4o-mini-tts";
+const OPENAI_VOICE = process.env.OPENAI_TTS_VOICE ?? "coral";
+
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_TTS_MODEL ?? "gemini-2.5-flash-tts";
+const GEMINI_VOICE = process.env.GEMINI_TTS_VOICE ?? "Kore";
+
 const REQUEST_TIMEOUT_MS = 30_000;
+
+const API_KEY = PROVIDER === "gemini" ? GEMINI_KEY : OPENAI_KEY;
+const MODEL = PROVIDER === "gemini" ? GEMINI_MODEL : OPENAI_MODEL;
+const VOICE = PROVIDER === "gemini" ? GEMINI_VOICE : OPENAI_VOICE;
 
 /**
  * Begrüßung und Füllsätze sind bei jedem Gespräch wortgleich. Sie jedes Mal
@@ -33,6 +52,88 @@ const VOICE_INSTRUCTIONS =
   "Sprich Deutsch als freundliche, professionelle Büroassistentin. " +
   "Ruhiges Tempo, natürliche Betonung, warm aber sachlich – nicht werblich.";
 
+/** Ruft OpenAI auf. `response_format: "pcm"` liefert 24 kHz/16 Bit direkt. */
+async function synthesizeOpenAI(
+  text: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const response = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      voice: OPENAI_VOICE,
+      input: text,
+      instructions: VOICE_INSTRUCTIONS,
+      response_format: "pcm",
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    console.error(
+      `OpenAI-TTS fehlgeschlagen (HTTP ${response.status}): ${await response.text()}`,
+    );
+    return null;
+  }
+
+  return Buffer.from(await response.arrayBuffer()).toString("base64");
+}
+
+/**
+ * Ruft Gemini auf. Die Antwort enthält das Audio bereits als Base64-PCM
+ * (24 kHz, 16 Bit, ohne Header) – es kann unverändert weitergereicht
+ * werden. Der Sprechstil wird dem Text vorangestellt, Gemini kennt kein
+ * eigenes Feld dafür.
+ */
+async function synthesizeGemini(
+  text: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": GEMINI_KEY ?? "",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `${VOICE_INSTRUCTIONS}\n\n${text}` }] }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: GEMINI_VOICE } },
+          },
+        },
+      }),
+      signal,
+    },
+  );
+
+  if (!response.ok) {
+    console.error(
+      `Gemini-TTS fehlgeschlagen (HTTP ${response.status}): ${await response.text()}`,
+    );
+    return null;
+  }
+
+  const payload = (await response.json()) as {
+    candidates?: {
+      content?: { parts?: { inlineData?: { data?: string } }[] };
+    }[];
+  };
+
+  const audio =
+    payload.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data ?? null;
+
+  if (!audio) console.error("Gemini-Antwort ohne Audio:", payload);
+  return audio;
+}
+
 /** Liefert Base64-PCM oder null, wenn die Vertonung fehlschlägt. */
 export async function synthesizeSpeech(text: string): Promise<string | null> {
   if (!API_KEY) return null;
@@ -47,30 +148,12 @@ export async function synthesizeSpeech(text: string): Promise<string | null> {
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        voice: VOICE,
-        input: text,
-        instructions: VOICE_INSTRUCTIONS,
-        response_format: "pcm",
-      }),
-      signal: controller.signal,
-    });
+    const audio =
+      PROVIDER === "gemini"
+        ? await synthesizeGemini(text, controller.signal)
+        : await synthesizeOpenAI(text, controller.signal);
 
-    if (!response.ok) {
-      console.error(
-        `OpenAI-TTS fehlgeschlagen (HTTP ${response.status}): ${await response.text()}`
-      );
-      return null;
-    }
-
-    const audio = Buffer.from(await response.arrayBuffer()).toString("base64");
+    if (!audio) return null;
 
     if (cacheable) {
       // Ältesten Eintrag verdrängen (Map behält die Einfügereihenfolge).

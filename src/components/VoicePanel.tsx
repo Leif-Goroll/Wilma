@@ -316,7 +316,7 @@ export default function VoicePanel({
               <path d="M19 11a7 7 0 0 1-14 0" />
               <path d="M12 18v3" />
             </svg>
-            {dictation.state === "recording" ? "Fertig" : "Sprechen"}
+            {dictation.state === "recording" ? "Absenden" : "Sprechen"}
           </button>
         )}
 
