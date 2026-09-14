@@ -47,15 +47,44 @@ export function toSpeakableText(text: string): string {
 /**
  * Zerlegt eine Antwort in Stücke, die einzeln vertont werden können.
  *
- * Der Sinn ist Wartezeit: Die Sprachsynthese braucht für einen ganzen
- * Absatz mehrere Sekunden, für den ersten Satz Bruchteile davon. Wilma
- * fängt deshalb an zu sprechen, während der Rest noch erzeugt wird.
+ * Der Sinn ist Wartezeit: Die Vertonung dauert ungefähr proportional zur
+ * Textlänge (gemessen: 36 Zeichen ≈ 2,8 s, 155 Zeichen ≈ 6,5 s). Wilma
+ * fängt deshalb mit einem kurzen ersten Stück an zu sprechen, während der
+ * Rest noch entsteht.
  *
- * Zu kleine Stücke wären kontraproduktiv – jede Anfrage kostet Zeit und
- * Geld –, deshalb werden kurze Sätze zusammengefasst.
+ * Die folgenden Stücke dürfen größer sein – sie werden erzeugt, während sie
+ * redet, und jede zusätzliche Anfrage kostet Zeit und Geld.
  */
-const MIN_CHUNK_LENGTH = 90;
+const FIRST_CHUNK_TARGET = 90;
+const FIRST_CHUNK_MIN = 35;
+const MIN_CHUNK_LENGTH = 140;
 const MAX_CHUNKS = 6;
+
+/**
+ * Sucht in einem zu langen Auftakt eine natürliche Sprechpause (Komma,
+ * Semikolon, Gedankenstrich), um dort zu trennen. Findet sich keine, bleibt
+ * das Stück ganz – mitten im Wort zu schneiden wäre hörbar.
+ */
+function splitAtClause(text: string): [string, string] | null {
+  const window = text.slice(0, FIRST_CHUNK_TARGET + 40);
+  // Die letzte Pause *vor* der Zielmarke ist die beste; nur wenn es davor
+  // keine gibt, wird die erste dahinter genommen.
+  let cut = -1;
+  for (const match of window.matchAll(/[,;:–—]\s/g)) {
+    const at = match.index + 1;
+    if (at < FIRST_CHUNK_MIN) continue;
+    if (at <= FIRST_CHUNK_TARGET) {
+      cut = at;
+    } else if (cut < FIRST_CHUNK_MIN) {
+      cut = at;
+      break;
+    } else {
+      break;
+    }
+  }
+  if (cut < FIRST_CHUNK_MIN) return null;
+  return [text.slice(0, cut).trim(), text.slice(cut).trim()];
+}
 
 export function splitIntoSpeechChunks(text: string): string[] {
   const sentences = text.match(/[^.!?…]+[.!?…]*\s*/g);
@@ -66,12 +95,20 @@ export function splitIntoSpeechChunks(text: string): string[] {
 
   for (const sentence of sentences) {
     current += sentence;
-    if (current.trim().length >= MIN_CHUNK_LENGTH) {
+    const minimum = chunks.length === 0 ? FIRST_CHUNK_MIN : MIN_CHUNK_LENGTH;
+    if (current.trim().length >= minimum) {
       chunks.push(current.trim());
       current = "";
     }
   }
   if (current.trim()) chunks.push(current.trim());
+
+  // Ist der Auftakt trotzdem lang geraten (ein einzelner langer Satz), an
+  // einer Sprechpause teilen, damit sie früher loslegt.
+  if (chunks[0] && chunks[0].length > FIRST_CHUNK_TARGET + 40) {
+    const split = splitAtClause(chunks[0]);
+    if (split) chunks.splice(0, 1, split[0], split[1]);
+  }
 
   // Überzählige Stücke hinten anhängen, statt viele Anfragen zu starten.
   if (chunks.length > MAX_CHUNKS) {

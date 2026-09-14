@@ -23,7 +23,7 @@ const OPENAI_MODEL = process.env.OPENAI_TTS_MODEL ?? "gpt-4o-mini-tts";
 const OPENAI_VOICE = process.env.OPENAI_TTS_VOICE ?? "coral";
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_TTS_MODEL ?? "gemini-2.5-flash-preview-tts";
+const GEMINI_MODEL = process.env.GEMINI_TTS_MODEL ?? "gemini-3.1-flash-tts-preview";
 const GEMINI_VOICE = process.env.GEMINI_TTS_VOICE ?? "Kore";
 
 const REQUEST_TIMEOUT_MS = 30_000;

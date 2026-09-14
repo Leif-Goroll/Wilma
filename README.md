@@ -256,9 +256,11 @@ Mechanismen sorgen dafür, dass Wilma trotzdem sofort reagiert:
 - **Vorgewärmter Zwischenspeicher** – Begrüßung und Füllsätze sind bei jedem
   Gespräch wortgleich. `/api/avatar/session` vertont sie beim Gesprächsstart
   im Hintergrund (`prewarmSpeech`), danach kommen sie in ~20 ms statt 2 s.
-- **Satzweise Vertonung** – die Antwort wird in Stücke zerlegt, alle
-  gleichzeitig vertont und der Reihe nach gesprochen. Sie beginnt beim
-  ersten Satz statt am Ende des Absatzes.
+- **Satzweise Vertonung mit kurzem Auftakt** – die Antwort wird in Stücke
+  zerlegt, alle gleichzeitig vertont und der Reihe nach gesprochen. Das
+  erste Stück ist bewusst kurz (ca. 64 statt 157 Zeichen, nötigenfalls an
+  einem Komma getrennt), denn die Vertonungsdauer wächst mit der Textlänge.
+  Das halbiert die Zeit bis zum ersten Wort.
 - **Zwischenruf** – dauert n8n länger als 1,2 s, sagt sie „Einen Moment, ich
   schaue kurz nach". Ist die Antwort vorher da, verstummt er wieder, statt
   überflüssig abgespielt zu werden.
@@ -278,6 +280,27 @@ Ergebnis:
 Der verbleibende Flaschenhals ist der n8n-Agent. Die drei Sekunden
 Verbindungsaufbau liegen bei LiveAvatar und lassen sich nur umgehen, indem
 man eine Sitzung offen hält – was pro Minute abgerechnet würde.
+
+### Stimme wechseln
+
+`TTS_PROVIDER` schaltet zwischen `openai` (Standard) und `gemini` um; beide
+liefern PCM 24 kHz, es ist also keine Umkodierung nötig. Gemessen mit dem
+kurzen Auftaktstück:
+
+| | erstes Stück | Ausreißer |
+|---|---|---|
+| OpenAI `gpt-4o-mini-tts` | **1,4 s** | keine |
+| Gemini `gemini-3.1-flash-tts-preview` | 3,9 s | keine |
+| Gemini `gemini-2.5-flash-preview-tts` | 6,5 s | Kaltstart 29 s, Spitzen bis 13 s |
+
+Das 2.5er-Modell deshalb meiden. Die Stimme wählt `OPENAI_TTS_VOICE`
+(coral, sage, marin, nova, shimmer, ballad, alloy …) bzw.
+`GEMINI_TTS_VOICE` (Kore, Leda, Aoede, Autonoe, Sulafat …).
+
+LiveAvatars eigene Stimmen sind **keine** Option: alle 20 sind englisch und
+greifen ohnehin nur im FULL-Modus. HeyGens `/v3/voices/speech` hätte
+deutsche Stimmen, liefert aber eine MP3-URL statt PCM – das bedeutet
+Nachladen, Dekodieren und zusätzliche Credits.
 
 ### Bekannte Einschränkungen
 - **Spracheingabe** nutzt die Web Speech API und läuft damit zuverlässig nur
