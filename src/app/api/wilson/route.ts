@@ -125,25 +125,32 @@ function parseReplyPayload(data: unknown): ExtractedReply {
   return { reply: JSON.stringify(data) };
 }
 
-const ACTION_MARKER_REGEX = /\s*\[ACTION:([a-zA-Z0-9_]+)\]\s*/;
+const ACTION_MARKER_REGEX = /\s*\[ACTION:([a-zA-Z0-9_]+)\]\s*/g;
 
 /**
  * Der n8n-Agent signalisiert Aktionen aktuell als Textmarker am Ende der
  * Antwort (z. B. "…zur Verfügung? [ACTION:ask_budget]"), nicht als
- * separates JSON-Feld. Diese Funktion erkennt den Marker, entfernt ihn aus
- * dem sichtbaren Text und gibt die Aktion getrennt zurück.
+ * separates JSON-Feld. Diese Funktion entfernt *alle* Marker aus dem
+ * sichtbaren Text und gibt den ersten als Aktion zurück.
+ *
+ * Es müssen wirklich alle verschwinden: Im Sprachmodus geht dieser Text an
+ * die Sprachausgabe, und ein übersehener Marker würde vorgelesen.
  */
 function stripActionMarker(text: string): {
   reply: string;
   action?: string;
 } {
-  const match = text.match(ACTION_MARKER_REGEX);
-  if (!match) {
+  const matches = [...text.matchAll(ACTION_MARKER_REGEX)];
+  if (matches.length === 0) {
     return { reply: text };
   }
 
-  return {
-    reply: text.replace(ACTION_MARKER_REGEX, "").trimEnd(),
-    action: match[1],
-  };
+  // Ersatz durch ein Leerzeichen, sonst kleben die Sätze zusammen
+  // ("Budget?Und Ihr Zeitrahmen?"); überzählige Leerzeichen danach weg.
+  const reply = text
+    .replace(ACTION_MARKER_REGEX, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+
+  return { reply, action: matches[0][1] };
 }

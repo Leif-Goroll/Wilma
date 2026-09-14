@@ -6,9 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "avatar:setup": "node --env-file=.env.local scripts/setup-avatar.mjs",
+    "avatar:check": "node --env-file=.env.local scripts/setup-avatar.mjs --dry-run"
   },
   "dependencies": {
+    "@heygen/liveavatar-web-sdk": "^0.0.18",
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8"

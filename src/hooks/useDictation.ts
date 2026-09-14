@@ -7,6 +7,12 @@ export type DictationState = "idle" | "recording" | "processing";
 
 interface UseDictationOptions {
   onResult: (cleanedText: string) => void;
+  /**
+   * Optionaler Draht nach oben: Elternkomponenten (z. B. der Chat mit dem
+   * Wilma-Avatar) können so auf "hört zu"/"verarbeitet" reagieren. Muss
+   * stabil sein (z. B. ein useState-Setter).
+   */
+  onStateChange?: (state: DictationState) => void;
 }
 
 // Web Speech API-Unterstützung ändert sich nie während der Session – es
@@ -24,7 +30,10 @@ function getServerSnapshot() {
   return false;
 }
 
-export function useDictation({ onResult }: UseDictationOptions) {
+export function useDictation({
+  onResult,
+  onStateChange,
+}: UseDictationOptions) {
   const [state, setState] = useState<DictationState>("idle");
   const [interimText, setInterimText] = useState("");
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -34,6 +43,14 @@ export function useDictation({ onResult }: UseDictationOptions) {
     subscribe,
     getSnapshot,
     getServerSnapshot
+  );
+
+  const changeState = useCallback(
+    (next: DictationState) => {
+      setState(next);
+      onStateChange?.(next);
+    },
+    [onStateChange]
   );
 
   const start = useCallback(() => {
@@ -67,19 +84,19 @@ export function useDictation({ onResult }: UseDictationOptions) {
     recognition.onerror = () => {
       recognitionRef.current = null;
       setInterimText("");
-      setState("idle");
+      changeState("idle");
     };
 
     recognition.start();
     recognitionRef.current = recognition;
-    setState("recording");
-  }, [supported, state]);
+    changeState("recording");
+  }, [supported, state, changeState]);
 
   const stop = useCallback(() => {
     const recognition = recognitionRef.current;
     if (!recognition || state !== "recording") return;
 
-    setState("processing");
+    changeState("processing");
 
     recognition.onend = () => {
       const rawText = finalTranscriptRef.current.trim();
@@ -87,17 +104,17 @@ export function useDictation({ onResult }: UseDictationOptions) {
       setInterimText("");
 
       if (!rawText) {
-        setState("idle");
+        changeState("idle");
         return;
       }
 
       cleanTranscript(rawText)
         .then(onResult)
-        .finally(() => setState("idle"));
+        .finally(() => changeState("idle"));
     };
 
     recognition.stop();
-  }, [state, onResult]);
+  }, [state, onResult, changeState]);
 
   return { supported, state, interimText, start, stop };
 }

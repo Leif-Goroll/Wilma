@@ -3,13 +3,20 @@
 import { useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useDictation } from "@/hooks/useDictation";
+import type { DictationState } from "@/hooks/useDictation";
 
 interface ChatInputProps {
   onSend: (text: string) => void;
   disabled: boolean;
+  /** Meldet Diktier-Zustände nach oben, damit Wilma "zuhören" kann. */
+  onDictationStateChange?: (state: DictationState) => void;
 }
 
-export default function ChatInput({ onSend, disabled }: ChatInputProps) {
+export default function ChatInput({
+  onSend,
+  disabled,
+  onDictationStateChange,
+}: ChatInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -18,6 +25,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
       setValue((prev) => (prev.trim() ? `${prev.trim()} ${cleanedText}` : cleanedText));
       textareaRef.current?.focus();
     },
+    onStateChange: onDictationStateChange,
   });
 
   const isDictating = dictation.state !== "idle";
@@ -46,7 +54,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   }
 
   return (
-    <div className="border-t border-[#1F3B5C] px-5 py-4 sm:px-7">
+    <div className="border-t border-[#1F3B5C] px-4 py-3 sm:px-5 sm:py-4">
       {dictation.state === "recording" && (
         <div className="mb-2 flex items-center gap-2 text-xs text-[#94A3B8]">
           <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#FACC15]" />
@@ -82,15 +90,15 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         </div>
       )}
 
-      <div className="flex items-end gap-3">
+      <div className="flex items-end gap-2">
         <textarea
           ref={textareaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={1}
-          placeholder="Schreiben Sie Wilson eine Nachricht …"
-          aria-label="Nachricht an Wilson"
+          placeholder="Nachricht an Wilma …"
+          aria-label="Nachricht an Wilma"
           disabled={disabled || isDictating}
           className="max-h-32 flex-1 resize-none rounded-lg border border-[#1F3B5C] bg-[#0E1F37] px-4 py-2.5 text-[15px] text-white placeholder-[#94A3B8] outline-none focus:border-[#22D3EE] focus:ring-1 focus:ring-[#22D3EE] disabled:opacity-60"
         />

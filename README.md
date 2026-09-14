@@ -1,9 +1,13 @@
-# Wilson – KI-Büroassistent (v0.1, Website-Chat)
+# Wilma – KI-Büroassistentin (v0.1, Website-Chat)
 
-Erste Ausbaustufe von Wilson, dem KI-Büroassistenten von Future AI Solutions.
+Erste Ausbaustufe von Wilma, der KI-Büroassistentin von Future AI Solutions.
 Diese Version deckt ausschließlich den Website-Chat-Kanal ab: Ein Next.js-Chat-Interface
 im Corporate Design, das jede Nutzernachricht an einen n8n-Workflow schickt und dessen
 Antwort im Chat anzeigt.
+
+> Hinweis: Intern (Code, Umgebungsvariablen, API-Routen wie `/api/wilson`) heißt das
+> Projekt weiterhin "Wilson" – nur der im Chat sichtbare Name wurde zu "Wilma" geändert,
+> um bestehende Konfiguration (`.env.local`) nicht zu brechen.
 
 ## Setup
 
@@ -46,6 +50,7 @@ src/
   components/
     ChatWindow.tsx          # State & Orchestrierung
     ChatHeader.tsx
+    WilmaAvatar.tsx         # Avatar in 5 Größen & 5 Zuständen
     MessageBubble.tsx
     ChatInput.tsx
     TypingIndicator.tsx
@@ -60,7 +65,7 @@ Signatur implementieren, ohne die Chat-UI oder die API-Route anzufassen.
 
 ## Aktionen aus n8n auslösen (Termin-Button, Regler)
 
-n8n kann Wilson signalisieren, dass zur Antwort ein UI-Element gehört (Buchungs-Button,
+n8n kann Wilma signalisieren, dass zur Antwort ein UI-Element gehört (Buchungs-Button,
 Regler). Zwei Wege werden unterstützt:
 
 1. **Textmarker am Ende der Antwort** (das, was der Agent aktuell tatsächlich sendet):
@@ -89,7 +94,7 @@ Regler). Zwei Wege werden unterstützt:
    Beide Formen werden von `parseReplyPayload()` in
    [`src/app/api/wilson/route.ts`](src/app/api/wilson/route.ts) automatisch erkannt.
 
-Bei `action: "book_appointment"` zeigt Wilson einen „Termin auswählen“-Button, der das
+Bei `action: "book_appointment"` zeigt Wilma einen „Termin auswählen“-Button, der das
 Calendly-Buchungsformular als Overlay öffnet – der Nutzer bleibt dabei im Chat auf der
 Website. Der Zielkalender wird über `NEXT_PUBLIC_CALENDLY_URL` konfiguriert. Unbekannte
 oder fehlende `action`-Werte werden ignoriert, sodass n8n einfach keinen Marker/kein Feld
@@ -149,3 +154,115 @@ automatisch die lokale Heuristik.
 Voice-Kanal, Avatar-Kanal, Mandantenfähigkeit, Nutzerverwaltung, Kalenderanbindung über
 die Terminauswahl hinaus (z. B. Verfügbarkeitsprüfung im eigenen Backend),
 Wissensbasis-Suche, Dashboard, Audit-Log, Authentifizierung.
+
+---
+
+## Sprachmodus (Wilma als Live-Video)
+
+Neben dem Chat kann Wilma per Video sprechen. Das Widget bietet beides an:
+**Schreiben** läuft wie bisher über n8n und kostet nichts, **Sprechen**
+verbraucht LiveAvatar-Credits pro Minute und startet nur auf Klick.
+
+### Wie es funktioniert
+
+```
+Mikrofon → Web Speech API (de-DE)
+         → /api/wilson       → n8n liefert Antworttext + [ACTION:…]
+         → /api/avatar/speak → OpenAI TTS, PCM 24 kHz
+         → LiveAvatar        → lippensynchrones Video
+```
+
+n8n bleibt das Gehirn: Qualifizierung, Terminlogik und die Aktionsmarker
+wirken im Gespräch genau wie im Chat. LiveAvatar rendert nur das Bild – im
+LITE-Modus liefert es **keine** Sprachausgabe, die kommt von OpenAI.
+
+Gesprochen wird ausschließlich der Fließtext. Aktionsmarker entfernt
+`/api/wilson`, Markdown, URLs und Emojis entfernt `src/lib/speakableText.ts`
+auf dem Weg zur Stimme – im Chat bleibt die Formatierung erhalten.
+
+### Einrichtung
+
+**LiveAvatar ist eine eigene Plattform**, nicht HeyGen. Gleicher Login,
+aber getrennte Pläne, Credits und API-Keys. Ein HeyGen-Key funktioniert
+hier nicht, und HeyGen-Avatare lassen sich nicht übernehmen.
+
+1. Key holen: `app.liveavatar.com` → Developers → API Key
+2. In `.env.local` eintragen:
+
+```
+HEYGEN_API_KEY=<LiveAvatar-Key>
+OPENAI_API_KEY=<für die Sprachausgabe>
+```
+
+3. Avatar ermitteln und eintragen lassen:
+
+```bash
+npm run avatar:setup
+```
+
+Das Skript prüft den Key, sucht den eigenen Avatar (Standard: Name enthält
+"Wilma"), schreibt dessen ID als `LIVEAVATAR_AVATAR_ID` in `.env.local` und
+meldet das Guthaben. `npm run avatar:check` macht dasselbe, ohne zu
+schreiben.
+
+Der Sprachmodus erscheint im Widget nur, wenn `HEYGEN_API_KEY` **und**
+`LIVEAVATAR_AVATAR_ID` gesetzt sind – sonst zeigt das Menü nur "Schreiben".
+
+### Aktueller Avatar
+
+Eingestellt ist das Preset **„Katya Sitting"**
+(`073b60a9-89a8-45aa-8902-c358f64d2852`). Es streamt mit echtem
+Büro-Hintergrund – deshalb ist der Greenscreen-Freisteller ausgeschaltet
+(`LIVEAVATAR_CHROMA_KEY=false`), das spart Rechenzeit in jedem Bild.
+
+Die Porträt-Presets und eigene Avatare kommen dagegen auf Greenscreen. Wer
+darauf wechselt, setzt `LIVEAVATAR_CHROMA_KEY=true` – dann stanzt
+`AvatarStage.tsx` den Hintergrund im Browser aus.
+
+### Eigener Avatar statt Preset
+
+Custom Avatare gibt es erst ab dem **Essential-Plan** (Free und Starter
+haben nur die Preset-Bibliothek). Wilma lässt sich dort als *Image Avatar*
+aus einem einzigen Foto anlegen – `public/Wilma-Avatar.png` ist die Vorlage,
+ein Video wird nicht gebraucht.
+
+Danach genügt `npm run avatar:setup`: Sobald der Avatar im Konto liegt, wird
+die ID automatisch übernommen. Am Code ändert sich nichts – nur
+`LIVEAVATAR_CHROMA_KEY=true` nicht vergessen, falls der neue Avatar auf
+Greenscreen rendert.
+
+### Kosten und Grenzen
+
+| Plan | Preis | Credits/Monat | Max. je Sitzung |
+|---|---|---|---|
+| Free | – | 10 | 2 Min |
+| Starter | 19 $ | 200 | 5 Min |
+| Essential | 99 $ | 1.010 | 20 Min |
+
+LITE verbraucht 1 Credit je angefangener Minute. Zwei Bremsen sind
+eingebaut: Die Session endet beim Schließen des Panels, und
+`LIVEAVATAR_MAX_SESSION_SECONDS` (Standard 120) deckelt sie serverseitig –
+auch wenn ein Browser abstürzt oder ein Tab offen liegen bleibt. Beim
+Wechsel auf einen größeren Plan diesen Wert anheben.
+
+### Antwortzeit
+
+Gemessen: n8n braucht **3–8 Sekunden**, die Sprachausgabe 1,5–2,5. Damit
+Wilma nicht stumm dasteht, greifen zwei Mechanismen:
+
+- **Satzweise Vertonung** – die Antwort wird in Stücke zerlegt, alle
+  gleichzeitig vertont und der Reihe nach gesprochen. Sie beginnt, sobald
+  der erste Satz fertig ist.
+- **Zwischenruf** – dauert es länger als 1,2 s, sagt sie „Einen Moment, ich
+  schaue kurz nach". Ist die Antwort vorher da, verstummt der Zwischenruf
+  wieder, statt überflüssig abgespielt zu werden.
+
+Wilma reagiert damit nach **rund 2,5 Sekunden**, unabhängig davon, wie lange
+n8n rechnet. Der Flaschenhals bleibt der n8n-Agent – dort liegt der Hebel,
+wenn es schneller werden soll.
+
+### Bekannte Einschränkungen
+- **Spracheingabe** nutzt die Web Speech API und läuft damit zuverlässig nur
+  in Chrome/Edge. Im Sprachmodus gibt es deshalb zusätzlich ein Textfeld.
+- Der Avatar kommt von LiveAvatar auf grünem Hintergrund; er wird im Browser
+  per Canvas freigestellt (`src/components/AvatarStage.tsx`).

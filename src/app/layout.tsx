@@ -9,9 +9,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Wilson – KI-Büroassistent | Future AI Solutions",
+  title: "Wilma – KI-Büroassistentin | Future AI Solutions",
   description:
-    "Wilson ist der digitale Büroassistent von Future AI Solutions und beantwortet Ihre Fragen im Website-Chat.",
+    "Wilma ist die digitale Büroassistentin von Future AI Solutions und beantwortet Ihre Fragen im Website-Chat.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

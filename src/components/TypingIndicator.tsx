@@ -1,8 +1,12 @@
+import WilmaAvatar from "@/components/WilmaAvatar";
+
 export default function TypingIndicator() {
   return (
-    <div className="flex justify-start">
+    <div className="flex items-end gap-2.5">
+      <WilmaAvatar size="xs" state="thinking" breathing={false} />
+
       <div className="flex items-center gap-1.5 rounded-lg border border-[#1F3B5C] bg-[#142540] px-4 py-3">
-        <span className="sr-only">Wilson tippt …</span>
+        <span className="sr-only">Wilma tippt …</span>
         {[0, 1, 2].map((i) => (
           <span
             key={i}
