@@ -29,7 +29,13 @@ async function synthesize(text: string): Promise<string | null> {
 }
 
 export type AvatarConnection =
-  "idle" | "connecting" | "live" | "unavailable" | "error";
+  | "idle"
+  | "connecting"
+  | "live"
+  /** Von außen beendet – Zeitlimit oder Netzabbruch. */
+  | "ended"
+  | "unavailable"
+  | "error";
 
 interface SpeakOptions {
   /**
@@ -74,8 +80,20 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
   // Vorab geholtes Token. Das Anlegen kostet nichts – abgerechnet wird erst
   // session.start() –, spart beim Klick aber den Netzabruf.
   const preparedRef = useRef<Promise<string | null> | null>(null);
+  /**
+   * Zählt jeden Start- und Stoppversuch hoch. Ein Start merkt sich seine
+   * Nummer und prüft nach jedem Warten, ob er noch der aktuelle ist.
+   *
+   * Nötig, weil der Aufbau mehrere Sekunden dauert und in der Zeit
+   * abgebrochen werden kann – etwa wenn jemand das Panel schließt oder
+   * React den Effekt im Entwicklungsmodus doppelt ausführt. Ohne diese
+   * Prüfung liefe eine überholte Sitzung unsichtbar weiter und würde bis
+   * zur Obergrenze abgerechnet.
+   */
+  const generationRef = useRef(0);
 
   const stop = useCallback(async () => {
+    generationRef.current += 1;
     activeRef.current = false;
     const session = sessionRef.current;
     sessionRef.current = null;
@@ -99,9 +117,9 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
   }, [stop]);
 
   /**
-   * Holt Token und SDK schon beim Öffnen des Sprachmodus, bevor jemand
-   * "Gespräch starten" drückt. Abgerechnet wird erst beim tatsächlichen
-   * Verbindungsaufbau, hier entsteht also kein Verbrauch.
+   * Holt Token und SDK parallel, statt nacheinander. Abgerechnet wird erst
+   * beim tatsächlichen Verbindungsaufbau, hier entsteht also kein
+   * Verbrauch – ein unbenutztes Token verfällt einfach.
    */
   const prepare = useCallback(() => {
     if (preparedRef.current) return;
@@ -123,6 +141,9 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
     async (greeting?: string) => {
       if (sessionRef.current) return;
 
+      const generation = ++generationRef.current;
+      const isStale = () => generation !== generationRef.current;
+
       setConnection("connecting");
       setError(null);
 
@@ -131,6 +152,9 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
       try {
         // Vorab geholtes Token nutzen, sonst jetzt eines besorgen.
         let sessionToken = await (preparedRef.current ?? Promise.resolve(null));
+        // Überholt? Dann das Token liegen lassen – der nächste Start kann
+        // es noch verwenden. Bis hier ist nichts abgerechnet.
+        if (isStale()) return;
         preparedRef.current = null;
 
         if (!sessionToken) {
@@ -155,6 +179,7 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
           ({ sessionToken } = (await response.json()) as {
             sessionToken: string;
           });
+          if (isStale()) return;
         }
 
         // Sofort anstoßen, nicht erst nach dem Verbinden: Der Aufbau dauert
@@ -168,6 +193,7 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
         // schnell bleiben.
         const { LiveAvatarSession, SessionEvent, AgentEventsEnum } =
           await import("@heygen/liveavatar-web-sdk");
+        if (isStale()) return;
 
         // voiceChat: false – das Mikrofon steuern wir selbst über die
         // Web Speech API, weil n8n und nicht LiveAvatar antworten soll.
@@ -189,13 +215,26 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
         });
 
         session.on(SessionEvent.SESSION_DISCONNECTED, () => {
+          // Nur die eigene Sitzung darf den Zustand zurücksetzen – sonst
+          // würde das Ende einer überholten Sitzung die laufende abmelden.
+          if (sessionRef.current !== session) return;
           sessionRef.current = null;
           activeRef.current = false;
           onSpeakingChange?.(false);
-          setConnection("idle");
+          // "ended" statt "idle": Die Sitzung wurde nicht vom Nutzer
+          // beendet, sondern von außen (Zeitlimit, Netzabbruch). Die
+          // Oberfläche soll das sagen, statt weiter "verbindet" zu zeigen.
+          setConnection("ended");
         });
 
         await session.start();
+
+        // Während des Verbindens abgebrochen: Diese Sitzung wird nicht mehr
+        // gebraucht und muss sofort enden, sonst läuft die Abrechnung weiter.
+        if (isStale()) {
+          await session.stop().catch(() => undefined);
+          return;
+        }
 
         // Falls der Stream schon vor dem Registrieren des Handlers bereitstand.
         if (videoRef.current) {
@@ -229,6 +268,11 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
             // Sie kam nie zustande – dann gibt es auch nichts zu beenden.
           }
         }
+
+        // Ein überholter Start darf den Zustand der laufenden Sitzung
+        // nicht mit seiner Fehlermeldung überschreiben.
+        if (isStale()) return;
+
         sessionRef.current = null;
         activeRef.current = false;
 
