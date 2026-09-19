@@ -283,10 +283,11 @@ man eine Sitzung offen hält – was pro Minute abgerechnet würde.
 
 ### Stimme
 
-Eingestellt ist **ElevenLabs** mit der Stimme **„Susi – Effortless and
-Confident"** (`v3V1d2rk6528UrLKRuy8`): muttersprachlich deutsch, für
-Gespräche gedacht, die meistgenutzte deutsche Frauenstimme der
-ElevenLabs-Bibliothek. Modell `eleven_turbo_v2_5`.
+Eingestellt ist **ElevenLabs** mit der Stimme **„Sarah – Storyteller"**
+(`XtxuRNfvtd45OyWcp5jr`), muttersprachlich deutsch. Modell
+`eleven_turbo_v2_5`. Nach längerer Pause braucht die Stimme beim ersten
+Einsatz einen Kaltstart (gemessen 12 s); das Vorwärmen beim Gesprächsstart
+fängt ihn ab, danach liegt sie bei ~0,3 s.
 
 `TTS_PROVIDER` schaltet zwischen `elevenlabs`, `openai` und `gemini` um –
 alle drei liefern PCM 24 kHz, also keine Umkodierung. Ist
@@ -309,7 +310,7 @@ kosten nach dem ersten Mal nichts. Das reicht für weit über tausend
 Antworten im Monat – vorher gehen die LiveAvatar-Minuten aus.
 
 Andere Stimme: `ELEVENLABS_VOICE_ID` setzen. Vorausgewählte Alternativen
-(alle deutsch, „conversational"): Laura `zKHQdbB8oaQ7roNTiDTK`, Ramona
+(alle deutsch): Susi `v3V1d2rk6528UrLKRuy8`, Laura `zKHQdbB8oaQ7roNTiDTK`, Ramona
 `6CS8keYmkwxkspesdyA7`, Louisa `1iF3vHdwHKuVKSPDK23Z`, Lucy
 `KXxZd16DiBqt82nbarJx`. Bibliotheksstimmen funktionieren direkt, ohne sie
 vorher ins Konto zu übernehmen.

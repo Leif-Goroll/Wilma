@@ -25,9 +25,10 @@ function resolveProvider(): Provider {
 const PROVIDER = resolveProvider();
 
 /**
- * Standardstimme "Susi – Effortless and Confident": muttersprachlich
- * deutsch, für Gespräche gedacht und die meistgenutzte deutsche
- * Frauenstimme der ElevenLabs-Bibliothek.
+ * Standardstimme "Sarah – Storyteller": muttersprachlich deutsch, von Leif
+ * für Wilma ausgewählt. Wie alle Bibliotheksstimmen braucht sie beim ersten
+ * Einsatz nach längerer Pause einen Kaltstart von mehreren Sekunden; den
+ * fängt das Vorwärmen beim Gesprächsstart ab, danach liegt sie bei ~0,3 s.
  *
  * Turbo v2.5 statt v3 oder Multilingual: gleiche Sprache, halber Preis pro
  * Zeichen und rund viermal schneller – bei einem Live-Gespräch zählt das
@@ -37,7 +38,7 @@ const ELEVENLABS_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_MODEL =
   process.env.ELEVENLABS_TTS_MODEL ?? "eleven_turbo_v2_5";
 const ELEVENLABS_VOICE =
-  process.env.ELEVENLABS_VOICE_ID ?? "v3V1d2rk6528UrLKRuy8";
+  process.env.ELEVENLABS_VOICE_ID ?? "XtxuRNfvtd45OyWcp5jr";
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_TTS_MODEL ?? "gpt-4o-mini-tts";
