@@ -16,6 +16,69 @@ import { splitIntoSpeechChunks } from "@/lib/speakableText";
  * Aushängen der Komponente zuverlässig beendet.
  */
 
+/*
+ * Warum Wilma in Chrome gestockt hat ("sagt etwas, hakt, sagt etwas") –
+ * gemessen mit getStats() in Chrome während der Begrüßung:
+ *
+ * Kein Paketverlust, kaum Jitter. Aber LiveAvatar schickt den Anfang jeder
+ * Äußerung als Stoß, schneller als in Echtzeit (34 statt 13 Pakete in der
+ * ersten halben Sekunde). Das hebt den Wiedergabepuffer auf 750 ms und
+ * mehr. Liegt das Puffer-Ziel darunter, baut Chrome den Überschuss ab,
+ * indem es laufend Tonstücke *herausschneidet*
+ * (removedSamplesForAcceleration) – bei einem Ziel von 400 ms gemessen
+ * 85/89/53/44/54/63/69/30 ms pro Sekunde, über die ganze Äußerung verteilt.
+ * Genau diese regelmäßigen Schnitte hört man als Stocken.
+ *
+ * Abhilfe: Ein Puffer-Ziel, das den Stoß aufnimmt. Dann hat Chrome keinen
+ * Überschuss mehr, den es abbauen müsste, und spielt alles ungekürzt ab.
+ * Der Preis ist eine gleichbleibende Verzögerung in dieser Höhe.
+ *
+ * Gemessen, geschnitten während der Begrüßung:
+ *   Chrome-Standard   693 ms
+ *   400 ms            430–614 ms
+ *   700 ms            0 ms in 3 von 3 Läufen (Puffer ~600 ms)
+ *   1000 ms           0 ms
+ * 700 ist damit der kleinste gemessene Wert ohne Schnitte.
+ */
+
+/** Puffer-Ziel für die Wiedergabe, in Millisekunden. */
+const PLAYOUT_BUFFER_MS = 700;
+
+/** Die Empfangsspuren des SDK – intern, aber für den Puffer nötig. */
+interface SessionTracks {
+  _remoteAudioTrack?: { receiver?: RTCRtpReceiver } | null;
+  _remoteVideoTrack?: { receiver?: RTCRtpReceiver } | null;
+}
+
+/**
+ * Setzt das Puffer-Ziel auf Ton- *und* Bildspur. Beide gleich, damit Chrome
+ * die Lippensynchronität nicht durch unterschiedliche Verzögerung verliert.
+ *
+ * Greift auf interne Felder des LiveAvatar-SDK zu, weil es keinen
+ * offiziellen Weg gibt. Fehlen sie in einer künftigen SDK-Version, passiert
+ * einfach nichts – die Wiedergabe läuft dann wie ohne diese Einstellung.
+ */
+function steadyPlayout(session: LiveAvatarSession) {
+  const tracks = session as unknown as SessionTracks;
+  for (const track of [tracks._remoteAudioTrack, tracks._remoteVideoTrack]) {
+    const receiver = track?.receiver;
+    if (!receiver) continue;
+
+    // Zur Laufzeit prüfen, welches Feld der Browser kennt – die Typen
+    // behaupten, jitterBufferTarget gäbe es immer.
+    const settable = receiver as unknown as {
+      jitterBufferTarget?: number | null;
+      playoutDelayHint?: number;
+    };
+    if ("jitterBufferTarget" in receiver) {
+      settable.jitterBufferTarget = PLAYOUT_BUFFER_MS;
+    } else if ("playoutDelayHint" in receiver) {
+      // Ältere Chrome-Versionen kennen nur das Feld in Sekunden.
+      settable.playoutDelayHint = PLAYOUT_BUFFER_MS / 1000;
+    }
+  }
+}
+
 /** Holt die Sprachausgabe für einen Textabschnitt. */
 async function synthesize(text: string): Promise<string | null> {
   const response = await fetch("/api/avatar/speak", {
@@ -211,6 +274,7 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
         // Erst wenn das SDK den Stream meldet, lässt er sich ans <video>
         // hängen – vorher quittiert attach() mit "Stream is not yet ready".
         session.on(SessionEvent.SESSION_STREAM_READY, () => {
+          steadyPlayout(session);
           if (videoRef.current) session.attach(videoRef.current);
         });
 
@@ -237,6 +301,8 @@ export function useLiveAvatar({ onSpeakingChange }: UseLiveAvatarOptions = {}) {
         }
 
         // Falls der Stream schon vor dem Registrieren des Handlers bereitstand.
+        // Das Puffer-Ziel muss stehen, bevor unten die Begrüßung abgeht.
+        steadyPlayout(session);
         if (videoRef.current) {
           try {
             session.attach(videoRef.current);
