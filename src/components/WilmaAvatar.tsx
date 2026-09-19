@@ -169,7 +169,11 @@ export default function WilmaAvatar({
           </span>
         ) : (
           <Image
-            src="/Wilma-Avatar.png"
+            /* Ausschnitt aus dem Logo (public/Wilma-Avatar-Neu.png), aber
+               innerhalb seines eingebauten Leuchtrings: Den Ring zeichnet
+               diese Komponente selbst, in der Farbe des jeweiligen Zustands.
+               Zwei Ringe übereinander sähen nach Fehler aus. */
+            src="/wilma-profilbild.png"
             alt=""
             fill
             sizes={`${px}px`}

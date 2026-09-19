@@ -219,12 +219,26 @@ Die Porträt-Presets und eigene Avatare kommen dagegen auf Greenscreen. Wer
 darauf wechselt, setzt `LIVEAVATAR_CHROMA_KEY=true` – dann stanzt
 `AvatarStage.tsx` den Hintergrund im Browser aus.
 
+### Logo und Bilder
+
+Wilmas Logo ist `public/Wilma-Avatar-Neu.png` – das Gesicht des Live-Avatars
+mit eingebautem Leuchtring. Daraus abgeleitet:
+
+- `public/wilma-profilbild.png` – Ausschnitt **innerhalb** des Rings, 512 px. Den
+  nutzt `WilmaAvatar.tsx` für Launcher, Kopfzeile und Chat. Der Ring fehlt
+  absichtlich: Die Komponente zeichnet ihren eigenen, der je nach Zustand
+  die Farbe wechselt (gelb beim Zuhören, pulsierend beim Antworten).
+- `src/app/favicon.ico` (16–64 px) und `src/app/apple-icon.png` (180 px) –
+  das vollständige Logo mit Ring für Browser-Tab und Homescreen.
+
+Bei einem neuen Logo alle drei neu erzeugen; der Ring saß im jetzigen Bild
+bei Mittelpunkt (620, 604) und Radius 560, der Ausschnitt ist 1040 px groß.
+
 ### Eigener Avatar statt Preset
 
 Custom Avatare gibt es erst ab dem **Essential-Plan** (Free und Starter
-haben nur die Preset-Bibliothek). Wilma lässt sich dort als *Image Avatar*
-aus einem einzigen Foto anlegen – `public/Wilma-Avatar.png` ist die Vorlage,
-ein Video wird nicht gebraucht.
+haben nur die Preset-Bibliothek). Ein *Image Avatar* entsteht dort aus einem
+einzigen Foto, ein Video wird nicht gebraucht.
 
 Danach genügt `npm run avatar:setup`: Sobald der Avatar im Konto liegt, wird
 die ID automatisch übernommen. Am Code ändert sich nichts – nur
