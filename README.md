@@ -168,13 +168,13 @@ verbraucht LiveAvatar-Credits pro Minute und startet nur auf Klick.
 ```
 Mikrofon → Web Speech API (de-DE)
          → /api/wilson       → n8n liefert Antworttext + [ACTION:…]
-         → /api/avatar/speak → OpenAI TTS, PCM 24 kHz
+         → /api/avatar/speak → ElevenLabs, PCM 24 kHz
          → LiveAvatar        → lippensynchrones Video
 ```
 
 n8n bleibt das Gehirn: Qualifizierung, Terminlogik und die Aktionsmarker
 wirken im Gespräch genau wie im Chat. LiveAvatar rendert nur das Bild – im
-LITE-Modus liefert es **keine** Sprachausgabe, die kommt von OpenAI.
+LITE-Modus liefert es **keine** Sprachausgabe, die kommt von ElevenLabs.
 
 Gesprochen wird ausschließlich der Fließtext. Aktionsmarker entfernt
 `/api/wilson`, Markdown, URLs und Emojis entfernt `src/lib/speakableText.ts`
@@ -191,7 +191,7 @@ hier nicht, und HeyGen-Avatare lassen sich nicht übernehmen.
 
 ```
 HEYGEN_API_KEY=<LiveAvatar-Key>
-OPENAI_API_KEY=<für die Sprachausgabe>
+ELEVENLABS_API_KEY=<für die Sprachausgabe>
 ```
 
 3. Avatar ermitteln und eintragen lassen:
@@ -281,21 +281,43 @@ Der verbleibende Flaschenhals ist der n8n-Agent. Die drei Sekunden
 Verbindungsaufbau liegen bei LiveAvatar und lassen sich nur umgehen, indem
 man eine Sitzung offen hält – was pro Minute abgerechnet würde.
 
-### Stimme wechseln
+### Stimme
 
-`TTS_PROVIDER` schaltet zwischen `openai` (Standard) und `gemini` um; beide
-liefern PCM 24 kHz, es ist also keine Umkodierung nötig. Gemessen mit dem
-kurzen Auftaktstück:
+Eingestellt ist **ElevenLabs** mit der Stimme **„Susi – Effortless and
+Confident"** (`v3V1d2rk6528UrLKRuy8`): muttersprachlich deutsch, für
+Gespräche gedacht, die meistgenutzte deutsche Frauenstimme der
+ElevenLabs-Bibliothek. Modell `eleven_turbo_v2_5`.
 
-| | erstes Stück | Ausreißer |
+`TTS_PROVIDER` schaltet zwischen `elevenlabs`, `openai` und `gemini` um –
+alle drei liefern PCM 24 kHz, also keine Umkodierung. Ist
+`ELEVENLABS_API_KEY` gesetzt und `TTS_PROVIDER` leer, wird automatisch
+ElevenLabs verwendet. Gemessen mit demselben 64-Zeichen-Satz:
+
+| | erstes Stück | Preis/Zeichen |
 |---|---|---|
-| OpenAI `gpt-4o-mini-tts` | **1,4 s** | keine |
-| Gemini `gemini-3.1-flash-tts-preview` | 3,9 s | keine |
-| Gemini `gemini-2.5-flash-preview-tts` | 6,5 s | Kaltstart 29 s, Spitzen bis 13 s |
+| **ElevenLabs `eleven_turbo_v2_5`** | **0,35 s** | ½ |
+| ElevenLabs `eleven_flash_v2_5` | 0,48 s | ½ |
+| ElevenLabs `eleven_v3_conversational` | 1,37 s | ½ |
+| OpenAI `gpt-4o-mini-tts` | 1,4 s | – |
+| Gemini `gemini-3.1-flash-tts-preview` | 3,9 s | – |
+| Gemini `gemini-2.5-flash-preview-tts` | 6,5 s (Kaltstart 29 s) | – |
 
-Das 2.5er-Modell deshalb meiden. Die Stimme wählt `OPENAI_TTS_VOICE`
-(coral, sage, marin, nova, shimmer, ballad, alloy …) bzw.
-`GEMINI_TTS_VOICE` (Kore, Leda, Aoede, Autonoe, Sulafat …).
+**Kosten:** Der Creator-Plan hat 131.000 Zeichen/Monat; Turbo zählt nur
+die Hälfte, effektiv also ~262.000. Eine typische Antwort hat 150–250
+Zeichen, Begrüßung und Füllsätze kommen aus dem Zwischenspeicher und
+kosten nach dem ersten Mal nichts. Das reicht für weit über tausend
+Antworten im Monat – vorher gehen die LiveAvatar-Minuten aus.
+
+Andere Stimme: `ELEVENLABS_VOICE_ID` setzen. Vorausgewählte Alternativen
+(alle deutsch, „conversational"): Laura `zKHQdbB8oaQ7roNTiDTK`, Ramona
+`6CS8keYmkwxkspesdyA7`, Louisa `1iF3vHdwHKuVKSPDK23Z`, Lucy
+`KXxZd16DiBqt82nbarJx`. Bibliotheksstimmen funktionieren direkt, ohne sie
+vorher ins Konto zu übernehmen.
+
+Der Zwischenspeicher pinnt Begrüßung und Füllsätze an – Antworten können
+sie nicht verdrängen –, und gleichzeitige Anfragen für denselben Text
+(Vorwärmen und Gesprächsstart fast im selben Moment) werden nur einmal
+vertont.
 
 LiveAvatars eigene Stimmen sind **keine** Option: alle 20 sind englisch und
 greifen ohnehin nur im FULL-Modus. HeyGens `/v3/voices/speech` hätte

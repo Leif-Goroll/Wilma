@@ -17,7 +17,7 @@ import type { WilsonAction } from "@/lib/types";
  *
  * Die Gesprächsschleife ist
  *   Mikrofon → Web Speech API → n8n (/api/wilson) → Antworttext
- *   → OpenAI-TTS (/api/avatar/speak) → LiveAvatar → lippensynchrones Video.
+ *   → Sprachausgabe (/api/avatar/speak) → LiveAvatar → lippensynchrones Video.
  *
  * n8n bleibt damit das Gehirn: Qualifizierung, Terminlogik und die
  * `[ACTION:…]`-Marker funktionieren im Gespräch genauso wie im Chat.
