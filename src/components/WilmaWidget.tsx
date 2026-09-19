@@ -16,8 +16,12 @@ import WilmaAvatar, { type WilmaAvatarState } from "@/components/WilmaAvatar";
 
 type WidgetView = "menu" | "chat" | "voice";
 
-/** Verzögerung, bevor die Sprechblase erscheint – sofort wirkt aufdringlich. */
-const TEASER_DELAY_MS = 2500;
+/**
+ * Verzögerung, bevor die Sprechblase erscheint. Sofort wirkt aufdringlich;
+ * nach ein paar Sekunden hat sich der Besucher orientiert und ist
+ * ansprechbar.
+ */
+const TEASER_DELAY_MS = 3500;
 const TEASER_DISMISSED_KEY = "wilma-teaser-dismissed";
 
 const STATUS_TEXT: Record<WilmaAvatarState, string> = {
@@ -54,7 +58,12 @@ export default function WilmaWidget({
   const [chatStarted, setChatStarted] = useState(false);
 
   useEffect(() => {
-    if (sessionStorage.getItem(TEASER_DISMISSED_KEY)) return;
+    try {
+      if (sessionStorage.getItem(TEASER_DISMISSED_KEY)) return;
+    } catch {
+      // Speicher gesperrt (privater Modus, strenge Einstellungen) – dann
+      // eben bei jedem Seitenaufruf zeigen.
+    }
 
     const timer = setTimeout(() => setShowTeaser(true), TEASER_DELAY_MS);
     return () => clearTimeout(timer);
@@ -84,9 +93,23 @@ export default function WilmaWidget({
     return () => document.removeEventListener("keydown", handleKey);
   }, [isOpen]);
 
+  /**
+   * Öffnet immer mit der Auswahl "Schreiben oder Sprechen", nie direkt in
+   * einem Modus. Sonst landete, wer zuletzt gesprochen hat, beim nächsten
+   * Öffnen gleich wieder im Sprachmodus – und der verbindet sich von
+   * selbst, würde also ungefragt Credits verbrauchen.
+   */
   function openWidget() {
     dismissTeaser();
+    showMenu();
     setIsOpen(true);
+  }
+
+  function showMenu() {
+    setView("menu");
+    // Der Status stammt sonst noch aus dem verlassenen Modus, etwa
+    // "zurzeit nicht erreichbar" nach dem Beenden des Sprachmodus.
+    setWilmaState("online");
   }
 
   function startChat() {
@@ -112,7 +135,7 @@ export default function WilmaWidget({
             {view !== "menu" && (
               <button
                 type="button"
-                onClick={() => setView("menu")}
+                onClick={showMenu}
                 aria-label="Zurück zur Auswahl"
                 className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#94A3B8] transition-colors hover:bg-[#16294a] hover:text-white"
               >
@@ -188,13 +211,40 @@ export default function WilmaWidget({
       )}
 
       {!isOpen && showTeaser && (
-        <div className="flex items-end gap-2">
+        <div className="wilma-teaser flex items-end gap-2">
+          {/* Führt – wie der Launcher – immer erst zur Auswahl zwischen
+              Schreiben und Sprechen, nie direkt in einen Modus. */}
           <button
             type="button"
             onClick={openWidget}
-            className="max-w-[15rem] rounded-2xl rounded-br-sm border border-[#1F3B5C] bg-[#132a4a] px-4 py-3 text-left text-sm text-white shadow-xl shadow-black/40 transition-colors hover:border-[#22D3EE]"
+            className="max-w-[16.5rem] rounded-2xl rounded-br-sm border border-[#22D3EE]/40 bg-[#132a4a] px-4 py-3 text-left shadow-xl shadow-black/40 transition hover:-translate-y-0.5 hover:border-[#22D3EE]"
           >
-            Guten Tag! Wie kann ich Ihnen helfen?
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-white">
+              Hi, ich bin Wilma
+              <span aria-hidden className="wilma-teaser__wave inline-block">
+                👋
+              </span>
+            </span>
+            <span className="mt-1 block text-[13px] leading-snug text-[#CBD5E1]">
+              Wie kann ich dir heute weiterhelfen? Ich beantworte deine Fragen –
+              im Chat oder per Sprache.
+            </span>
+            <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#22D3EE]">
+              Jetzt fragen
+              <svg
+                viewBox="0 0 24 24"
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M5 12h14" />
+                <path d="M13 6l6 6-6 6" />
+              </svg>
+            </span>
           </button>
           <button
             type="button"
@@ -221,7 +271,9 @@ export default function WilmaWidget({
         type="button"
         onClick={() => (isOpen ? setIsOpen(false) : openWidget())}
         aria-expanded={isOpen}
-        aria-label={isOpen ? "Chat mit Wilma schließen" : "Chat mit Wilma öffnen"}
+        aria-label={
+          isOpen ? "Chat mit Wilma schließen" : "Chat mit Wilma öffnen"
+        }
         className="flex h-16 w-16 items-center justify-center rounded-full transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#22D3EE] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0E1F37]"
       >
         {isOpen ? (

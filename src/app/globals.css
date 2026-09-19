@@ -86,3 +86,49 @@ body {
     animation: none;
   }
 }
+
+/* --- Sprechblase am Launcher --------------------------------------------
+   Gleitet sanft ein, statt aufzupoppen – sie soll einladen, nicht
+   erschrecken. Die Hand winkt einmal kurz, danach ist Ruhe. */
+.wilma-teaser {
+  animation: wilma-teaser-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.wilma-teaser__wave {
+  transform-origin: 70% 70%;
+  animation: wilma-wave 1.4s ease-in-out 500ms 1;
+}
+
+@keyframes wilma-teaser-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes wilma-wave {
+  0%,
+  60%,
+  100% {
+    transform: rotate(0deg);
+  }
+  10%,
+  30% {
+    transform: rotate(16deg);
+  }
+  20%,
+  40% {
+    transform: rotate(-8deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wilma-teaser,
+  .wilma-teaser__wave {
+    animation: none;
+  }
+}
