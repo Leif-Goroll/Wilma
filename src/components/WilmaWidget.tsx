@@ -220,13 +220,13 @@ export default function WilmaWidget({
             className="max-w-[16.5rem] rounded-2xl rounded-br-sm border border-[#22D3EE]/40 bg-[#132a4a] px-4 py-3 text-left shadow-xl shadow-black/40 transition hover:-translate-y-0.5 hover:border-[#22D3EE]"
           >
             <span className="flex items-center gap-1.5 text-sm font-semibold text-white">
-              Hi, ich bin Wilma
+              Hallo, ich bin Wilma
               <span aria-hidden className="wilma-teaser__wave inline-block">
                 👋
               </span>
             </span>
             <span className="mt-1 block text-[13px] leading-snug text-[#CBD5E1]">
-              Wie kann ich dir heute weiterhelfen? Ich beantworte deine Fragen –
+              Wie kann ich Ihnen heute weiterhelfen? Ich beantworte Ihre Fragen –
               im Chat oder per Sprache.
             </span>
             <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#22D3EE]">

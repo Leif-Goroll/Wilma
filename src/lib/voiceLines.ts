@@ -5,11 +5,13 @@
  * Der Browser spricht sie, und der Server wärmt ihre Vertonung vor, sobald
  * ein Gespräch beginnt. Wortgleich bleiben müssen sie deshalb auch – nur
  * dann greift der Zwischenspeicher.
+ *
+ * Wilma siezt durchgehend – wie im Chat und in den Antworten aus n8n.
  */
 
 export const GREETING =
-  "Hi, hier ist Wilma. Ich bin die digitale Assistentin von Future AI " +
-  "Solutions. Wie kann ich dir heute weiterhelfen?";
+  "Hallo, hier ist Wilma. Ich bin die digitale Assistentin von Future AI " +
+  "Solutions. Wie kann ich Ihnen heute weiterhelfen?";
 
 /**
  * Überbrücken die Denkpause des n8n-Agenten. Mehrere Varianten, damit es
@@ -17,7 +19,7 @@ export const GREETING =
  */
 export const THINKING_CUES = [
   "Einen Moment, ich schaue kurz nach.",
-  "Sekunde, das prüfe ich eben.",
+  "Einen Augenblick, das prüfe ich kurz.",
   "Lassen Sie mich kurz überlegen.",
 ];
 
