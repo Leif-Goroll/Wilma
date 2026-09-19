@@ -58,7 +58,7 @@ export default function ChatInput({
       {dictation.state === "recording" && (
         <div className="mb-2 flex items-center gap-2 text-xs text-[#94A3B8]">
           <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#FACC15]" />
-          <span className="shrink-0">Aufnahme läuft – sprechen Sie jetzt …</span>
+          <span className="shrink-0">Aufnahme läuft. Sprechen Sie jetzt …</span>
           {dictation.interimText && (
             <span className="truncate italic">„{dictation.interimText}“</span>
           )}

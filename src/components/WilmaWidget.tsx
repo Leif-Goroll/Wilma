@@ -226,8 +226,7 @@ export default function WilmaWidget({
               </span>
             </span>
             <span className="mt-1 block text-[13px] leading-snug text-[#CBD5E1]">
-              Wie kann ich Ihnen heute weiterhelfen? Ich beantworte Ihre Fragen –
-              im Chat oder per Sprache.
+              Wie kann ich Ihnen heute weiterhelfen?
             </span>
             <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#22D3EE]">
               Jetzt fragen
@@ -339,7 +338,7 @@ function ModeMenu({ voiceEnabled, onChat, onVoice }: ModeMenuProps) {
             Schreiben
           </span>
           <span className="mt-0.5 block text-xs text-[#94A3B8]">
-            Ganz normal tippen – oder das Mikrofon zum Diktieren nutzen.
+            Ganz normal tippen oder das Mikrofon zum Diktieren nutzen.
           </span>
         </span>
       </button>

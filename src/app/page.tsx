@@ -4,7 +4,7 @@ export default function Home() {
   // Der Sprachmodus erscheint nur, wenn er serverseitig wirklich eingerichtet
   // ist. So taucht kein Knopf auf, der beim Klick ins Leere läuft.
   const voiceEnabled = Boolean(
-    process.env.HEYGEN_API_KEY && process.env.LIVEAVATAR_AVATAR_ID
+    process.env.HEYGEN_API_KEY && process.env.LIVEAVATAR_AVATAR_ID,
   );
 
   // Preset-Avatare mit echtem Hintergrund brauchen kein Ausstanzen. Nur
@@ -21,9 +21,8 @@ export default function Home() {
         Wilma, die digitale Büroassistentin
       </h1>
       <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-[#94A3B8]">
-        Wilma beantwortet Fragen, qualifiziert Anfragen und bucht Termine –
-        rund um die Uhr. Öffnen Sie das Fenster unten rechts, um sie
-        auszuprobieren.
+        Wilma beantwortet Fragen, qualifiziert Anfragen und bucht Termine, rund
+        um die Uhr. Öffnen Sie das Fenster unten rechts, um sie auszuprobieren.
       </p>
 
       <WilmaWidget voiceEnabled={voiceEnabled} chromaKey={chromaKey} />

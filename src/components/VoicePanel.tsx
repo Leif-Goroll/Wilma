@@ -231,7 +231,7 @@ export default function VoicePanel({
             >
               {dictation.interimText
                 ? `„${dictation.interimText}“`
-                : "Ich höre zu – sprechen Sie jetzt."}
+                : "Ich höre zu. Sprechen Sie jetzt."}
             </p>
           )}
 

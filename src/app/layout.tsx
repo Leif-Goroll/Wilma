@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Wilma – KI-Büroassistentin | Future AI Solutions",
+  title: "Wilma, KI-Büroassistentin | Future AI Solutions",
   description:
     "Wilma ist die digitale Büroassistentin von Future AI Solutions und beantwortet Ihre Fragen im Website-Chat.",
 };
