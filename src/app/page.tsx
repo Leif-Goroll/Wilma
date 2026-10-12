@@ -1,4 +1,5 @@
 import WilmaWidget from "@/components/WilmaWidget";
+import { TTS_CONFIGURED } from "@/lib/tts";
 
 export default function Home() {
   // Der Sprachmodus erscheint nur, wenn er serverseitig wirklich eingerichtet
@@ -25,7 +26,11 @@ export default function Home() {
         um die Uhr. Öffnen Sie das Fenster unten rechts, um sie auszuprobieren.
       </p>
 
-      <WilmaWidget voiceEnabled={voiceEnabled} chromaKey={chromaKey} />
+      <WilmaWidget
+        voiceEnabled={voiceEnabled}
+        audioEnabled={TTS_CONFIGURED}
+        chromaKey={chromaKey}
+      />
     </main>
   );
 }

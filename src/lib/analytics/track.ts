@@ -25,7 +25,8 @@ export type WilmaEventType =
   | "end"
   | "error";
 
-export type WilmaMode = "chat" | "voice";
+/** voice = Avatar-Anruf (LiveAvatar), audio = nur Stimme, chat = Text. */
+export type WilmaMode = "chat" | "voice" | "audio";
 
 const SESSION_KEY = "wilma-analytics-session";
 const SESSION_START_KEY = "wilma-analytics-started";

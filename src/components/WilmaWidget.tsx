@@ -1,21 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import AudioPanel from "@/components/AudioPanel";
+import ChatWindow from "@/components/ChatWindow";
 import VoicePanel from "@/components/VoicePanel";
 import WilmaAvatar, { type WilmaAvatarState } from "@/components/WilmaAvatar";
+import { useSpeechInputSupported } from "@/hooks/useDictation";
 import { track, trackSessionEnd } from "@/lib/analytics/track";
+import { unlockSpeech } from "@/lib/speechPlayback";
 
 /**
  * Schwebendes Wilma-Widget unten rechts.
  *
- * Ablauf: geschlossene Blase → Start-Bildschirm mit einem einzigen Knopf
- * ("Gespräch starten") → Sprachmodus. Der Zwischenschritt bleibt bewusst
- * bestehen, obwohl es nur noch einen Weg gibt: Sprechen verbraucht
- * LiveAvatar-Credits pro Minute, ein Klick auf die Blase selbst darf also
- * nicht schon die Verbindung auslösen.
+ * Ablauf: geschlossene Blase → Start-Bildschirm „Wie möchten Sie
+ * sprechen?“ mit drei Wegen → das gewählte Gespräch:
+ *
+ *   Avatar-Anruf  Bild und Stimme über LiveAvatar (kostet Credits je Minute)
+ *   Nur Stimme    Sprechen und Hören, Wilma als Standbild (nur Vertonung)
+ *   Chat          Text, lautlos, geht immer
+ *
+ * Der Start-Bildschirm bleibt ein eigener Schritt: Ein Klick auf die Blase
+ * darf nie schon eine kostenpflichtige Verbindung auslösen. Angeboten wird
+ * nur, was hier auch funktioniert – ohne Spracherkennung oder bei gesperrtem
+ * Mikrofon bleibt der Chat.
  */
 
-type WidgetView = "start" | "voice";
+type WidgetView = "start" | "voice" | "audio" | "chat";
 
 /**
  * Verzögerung, bevor die Sprechblase erscheint. Sofort wirkt aufdringlich;
@@ -39,6 +49,11 @@ interface WilmaWidgetProps {
    * sind, wird „Sprechen“ überhaupt angeboten.
    */
   voiceEnabled: boolean;
+  /**
+   * Nur wenn serverseitig eine Sprachausgabe eingerichtet ist, gibt es
+   * „Nur Stimme“ – ohne Vertonung bliebe Wilma darin stumm.
+   */
+  audioEnabled: boolean;
   /** Greenscreen des Avatars im Browser ausstanzen. */
   chromaKey: boolean;
   /**
@@ -57,6 +72,7 @@ interface WilmaWidgetProps {
 
 export default function WilmaWidget({
   voiceEnabled,
+  audioEnabled,
   chromaKey,
   embedded = false,
   containerRef,
@@ -64,6 +80,9 @@ export default function WilmaWidget({
 }: WilmaWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [view, setView] = useState<WidgetView>("start");
+  // Der Chat bleibt nach dem ersten Öffnen montiert (nur versteckt), damit
+  // der Verlauf einen Abstecher zur Auswahl überlebt.
+  const [chatStarted, setChatStarted] = useState(false);
   const [showTeaser, setShowTeaser] = useState(false);
   const [wilmaState, setWilmaState] = useState<WilmaAvatarState>("online");
   const panelRef = useRef<HTMLDivElement>(null);
@@ -149,9 +168,13 @@ export default function WilmaWidget({
     setWilmaState("online");
   }
 
-  function startVoice() {
-    setView("voice");
-    track("mode", { mode: "voice" });
+  function startMode(mode: Exclude<WidgetView, "start">) {
+    // Im Klick des Besuchers: Erst danach geben Browser Ton frei – sonst
+    // bliebe Wilmas Begrüßung in „Nur Stimme“ stumm.
+    if (mode === "audio") unlockSpeech();
+    if (mode === "chat") setChatStarted(true);
+    setView(mode);
+    track("mode", { mode });
   }
 
   return (
@@ -232,7 +255,11 @@ export default function WilmaWidget({
           </header>
 
           {view === "start" && (
-            <StartScreen voiceEnabled={voiceEnabled} onStart={startVoice} />
+            <StartScreen
+              voiceEnabled={voiceEnabled}
+              audioEnabled={audioEnabled}
+              onStart={startMode}
+            />
           )}
 
           {view === "voice" && (
@@ -241,6 +268,16 @@ export default function WilmaWidget({
               onStateChange={setWilmaState}
               onBack={showStart}
             />
+          )}
+
+          {view === "audio" && (
+            <AudioPanel onStateChange={setWilmaState} onBack={showStart} />
+          )}
+
+          {chatStarted && (
+            <div className="min-h-0 flex-1" hidden={view !== "chat"}>
+              <ChatWindow embedded onStateChange={setWilmaState} />
+            </div>
           )}
         </div>
       )}
@@ -345,68 +382,166 @@ export default function WilmaWidget({
   );
 }
 
+type GesprächsArt = Exclude<WidgetView, "start">;
+
 interface StartScreenProps {
-  /**
-   * Nur gesetzt, wenn serverseitig ein LiveAvatar-Key und eine Avatar-ID
-   * hinterlegt sind. Ohne das gibt es nichts, das der Knopf starten könnte.
-   */
+  /** LiveAvatar ist serverseitig eingerichtet. */
   voiceEnabled: boolean;
-  onStart: () => void;
+  /** Sprachausgabe ist serverseitig eingerichtet. */
+  audioEnabled: boolean;
+  onStart: (mode: GesprächsArt) => void;
 }
 
+interface Option {
+  mode: GesprächsArt;
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  /** Gesetzt, wenn die Option hier nicht geht – der Grund steht dann da. */
+  unavailable?: string;
+}
+
+const ICON_PROPS = {
+  viewBox: "0 0 24 24",
+  className: "h-5 w-5",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
 /**
- * Start-Bildschirm: ein einziger Knopf, der das Gespräch samt
- * Verbindungsaufbau auslöst. Bewusst ein eigener Schritt statt eines
- * Direktstarts beim Öffnen – Sprechen kostet LiveAvatar-Credits pro
- * Minute, das soll nie ungefragt passieren.
+ * Start-Bildschirm: „Wie möchten Sie sprechen?“ – Avatar-Anruf, nur Stimme
+ * oder Chat, darunter „Los geht's“. Erst dieser Knopf startet das Gespräch;
+ * die Auswahl allein kostet nichts.
  */
-function StartScreen({ voiceEnabled, onStart }: StartScreenProps) {
+function StartScreen({ voiceEnabled, audioEnabled, onStart }: StartScreenProps) {
+  const canSpeak = useSpeechInputSupported();
+  const speakHint = "Sprechen geht in Chrome oder Edge";
+
+  const options: Option[] = [
+    ...(voiceEnabled
+      ? [
+          {
+            mode: "voice" as const,
+            title: "Avatar-Anruf",
+            subtitle: "Bild und Stimme",
+            unavailable: canSpeak ? undefined : speakHint,
+            icon: (
+              <svg {...ICON_PROPS}>
+                <rect x="4" y="3" width="16" height="18" rx="3" />
+                <circle cx="12" cy="10" r="3" />
+                <path d="M7.5 18a5 5 0 0 1 9 0" />
+              </svg>
+            ),
+          },
+        ]
+      : []),
+    ...(audioEnabled
+      ? [
+          {
+            mode: "audio" as const,
+            title: "Nur Stimme",
+            subtitle: "Sprechen, kein Bild",
+            unavailable: canSpeak ? undefined : speakHint,
+            icon: (
+              <svg {...ICON_PROPS}>
+                <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" />
+                <path d="M19 11a7 7 0 0 1-14 0" />
+                <path d="M12 18v3" />
+              </svg>
+            ),
+          },
+        ]
+      : []),
+    {
+      mode: "chat",
+      title: "Chat",
+      subtitle: "Nur Text, lautlos",
+      icon: (
+        <svg {...ICON_PROPS}>
+          <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
+        </svg>
+      ),
+    },
+  ];
+
+  const firstAvailable =
+    options.find((option) => !option.unavailable)?.mode ?? "chat";
+  // Vorauswahl folgt dem, was gerade möglich ist (die Spracherkennung steht
+  // erst nach dem ersten Rendern fest) – bis der Besucher selbst wählt.
+  const [picked, setPicked] = useState<GesprächsArt | null>(null);
+  const selected =
+    picked && options.some((o) => o.mode === picked && !o.unavailable)
+      ? picked
+      : firstAvailable;
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 py-5 text-center">
-      <WilmaAvatar state="online" size="lg" />
+    <div className="flex min-h-0 flex-1 flex-col px-5 py-5">
+      <h2 id="wilma-mode-heading" className="text-[15px] font-bold text-white">
+        Wie möchten Sie sprechen?
+      </h2>
 
-      {voiceEnabled ? (
-        <>
-          <p className="text-sm text-[#CBD5E1]">
-            Guten Tag! Ich bin Wilma, die digitale Büroassistentin von
-            Future AI Solutions. Starten Sie das Gespräch, sobald Sie
-            bereit sind.
-          </p>
-
-          <button
-            type="button"
-            onClick={onStart}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22D3EE] px-4 py-3 text-sm font-semibold text-[#0E1F37] transition-opacity hover:opacity-90"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
+      <div
+        role="radiogroup"
+        aria-labelledby="wilma-mode-heading"
+        className="no-scrollbar mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto"
+      >
+        {options.map((option) => {
+          const isSelected = option.mode === selected;
+          const disabled = Boolean(option.unavailable);
+          return (
+            <button
+              key={option.mode}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              disabled={disabled}
+              onClick={() => setPicked(option.mode)}
+              className={`flex w-full items-center gap-4 rounded-xl border px-4 py-3.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                isSelected
+                  ? "border-[#22D3EE] bg-[#13294a]"
+                  : "border-transparent bg-[#132440] hover:bg-[#16294a]"
+              }`}
             >
-              <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" />
-              <path d="M19 11a7 7 0 0 1-14 0" />
-              <path d="M12 18v3" />
-            </svg>
-            Gespräch starten
-          </button>
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#0E1F37] text-[#67E8F9]">
+                {option.icon}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-white">
+                  {option.title}
+                </span>
+                <span className="block text-xs text-[#94A3B8]">
+                  {option.unavailable ?? option.subtitle}
+                </span>
+              </span>
+              <span
+                aria-hidden
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                  isSelected ? "border-[#22D3EE]" : "border-[#22D3EE]/70"
+                }`}
+              >
+                {isSelected && (
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#22D3EE]" />
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-          <p className="pt-2 text-[11px] leading-relaxed text-[#64748B]">
-            Sie sprechen mit einer KI.
-          </p>
-        </>
-      ) : (
-        // Ohne LiveAvatar-Zugangsdaten gibt es nichts, das der Knopf
-        // starten könnte – lieber das offen zeigen als einen Knopf
-        // anzubieten, der beim Klick nur ins Leere liefe.
-        <p className="text-sm text-[#94A3B8]">
-          Wilma ist im Moment nicht erreichbar. Bitte versuchen Sie es
-          später erneut.
-        </p>
-      )}
+      <button
+        type="button"
+        onClick={() => onStart(selected)}
+        className="mt-4 flex h-12 w-full shrink-0 items-center justify-center rounded-xl bg-[#22D3EE] text-sm font-semibold text-[#0E1F37] transition-opacity hover:opacity-90"
+      >
+        Los geht&apos;s
+      </button>
+
+      <p className="pt-3 text-center text-[11px] text-[#64748B]">
+        Sie sprechen mit einer KI.
+      </p>
     </div>
   );
 }

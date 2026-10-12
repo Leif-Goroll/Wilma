@@ -302,6 +302,27 @@ Wissensbasis-Suche, Dashboard, Audit-Log, Authentifizierung.
 
 ---
 
+## Drei Wege ins Gespräch
+
+Beim Öffnen fragt Wilma „Wie möchten Sie sprechen?“ und bietet bis zu drei
+Wege an; erst „Los geht's“ startet das Gespräch:
+
+| Modus | Was passiert | Kosten | Voraussetzung |
+|---|---|---|---|
+| **Avatar-Anruf** | Bild und Stimme über LiveAvatar (`VoicePanel`) | LiveAvatar-Credits je Minute + Vertonung | `HEYGEN_API_KEY` und `LIVEAVATAR_AVATAR_ID` |
+| **Nur Stimme** | Sprechen und Hören, Wilma als Standbild, Antwort zusätzlich als Text (`AudioPanel`) | nur die Vertonung | eine Sprachausgabe (`ELEVENLABS_API_KEY`, `OPENAI_API_KEY` oder `GEMINI_API_KEY`) |
+| **Chat** | Text, lautlos (`ChatWindow`) | nichts außer n8n | immer |
+
+Ohne Spracherkennung im Browser (Firefox) oder bei gesperrtem Mikrofon sind
+die beiden Sprachwege ausgegraut mit Hinweis – der Chat geht immer.
+„Nur Stimme“ spielt das PCM aus `/api/avatar/speak` über die Web Audio API
+(`src/lib/speechPlayback.ts`) und wärmt Begrüßung und Füllsätze beim ersten
+Aufruf vor, wie es der Avatar beim Sitzungsaufbau tut.
+
+Im Dashboard zählt `mode = 'audio'` als Sprachnutzung
+(`dashboard/sql/002_ingest_functions.sql` – nach der Änderung einmal neu
+einspielen), aber nicht zu den LiveAvatar-Minuten.
+
 ## Sprachmodus (Wilma als Live-Video)
 
 Neben dem Chat kann Wilma per Video sprechen. Das Widget bietet beides an:

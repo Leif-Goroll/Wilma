@@ -123,7 +123,7 @@ begin
     first_mode       = coalesce(first_mode, case when v_type = 'mode' then v_mode end),
     used_chat        = used_chat or (v_type = 'mode' and v_mode = 'chat'),
     used_voice       = used_voice or (v_type in ('voice_start', 'voice_end'))
-                         or (v_type = 'mode' and v_mode = 'voice'),
+                         or (v_type = 'mode' and v_mode in ('voice', 'audio')),
     used_dictation   = used_dictation or v_type = 'dictation',
     voice_seconds    = voice_seconds
                          + case when v_type = 'voice_end' then coalesce(v_value, 0)::integer else 0 end,

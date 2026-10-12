@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { TTS_CONFIGURED, synthesizeSpeech } from "@/lib/tts";
+import { TTS_CONFIGURED, prewarmSpeech, synthesizeSpeech } from "@/lib/tts";
+import { PREWARM_LINES } from "@/lib/voiceLines";
 
 /**
  * Wandelt Wilmas Antworttext in Sprache um.
@@ -31,6 +32,11 @@ export async function POST(request: NextRequest) {
   if (!text) {
     return NextResponse.json({ error: "Text fehlt." }, { status: 400 });
   }
+
+  // „Nur Stimme“ hat keinen Sitzungsaufbau, der die festen Sätze vorwärmt
+  // (wie /api/avatar/session für den Avatar). Bereits Vorhandenes kostet
+  // dabei nichts.
+  prewarmSpeech(PREWARM_LINES);
 
   const audio = await synthesizeSpeech(text.slice(0, MAX_TEXT_LENGTH));
 

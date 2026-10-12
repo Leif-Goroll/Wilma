@@ -41,8 +41,7 @@ interface VoicePanelProps {
   /** Greenscreen ausstanzen – nur nötig bei Avataren ohne Hintergrund. */
   chromaKey: boolean;
   onStateChange: (state: WilmaAvatarState) => void;
-  /** Zurück zum Start-Bildschirm – es gibt keinen Chat mehr, in den man
-   *  stattdessen wechseln könnte. */
+  /** Zurück zum Start-Bildschirm – dort stehen auch „Nur Stimme“ und Chat. */
   onBack: () => void;
 }
 

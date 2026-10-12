@@ -21,11 +21,13 @@ import {
 
 interface EmbedFrameProps {
   voiceEnabled: boolean;
+  audioEnabled: boolean;
   chromaKey: boolean;
 }
 
 export default function EmbedFrame({
   voiceEnabled,
+  audioEnabled,
   chromaKey,
 }: EmbedFrameProps) {
   const widgetRef = useRef<HTMLDivElement | null>(null);
@@ -71,6 +73,7 @@ export default function EmbedFrame({
       containerRef={widgetRef}
       onOpenChange={setIsOpen}
       voiceEnabled={voiceEnabled}
+      audioEnabled={audioEnabled}
       chromaKey={chromaKey}
     />
   );

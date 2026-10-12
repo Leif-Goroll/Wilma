@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import EmbedFrame from "@/components/EmbedFrame";
+import { TTS_CONFIGURED } from "@/lib/tts";
 
 /**
  * Wilma zum Einbetten auf einer fremden Seite (z. B. WordPress).
@@ -31,7 +32,11 @@ export default function EmbedPage() {
       `}</style>
 
       <div className="wilma-embed-stage">
-        <EmbedFrame voiceEnabled={voiceEnabled} chromaKey={chromaKey} />
+        <EmbedFrame
+          voiceEnabled={voiceEnabled}
+          audioEnabled={TTS_CONFIGURED}
+          chromaKey={chromaKey}
+        />
       </div>
     </>
   );

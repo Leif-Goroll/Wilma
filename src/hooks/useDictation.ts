@@ -55,6 +55,15 @@ function getServerSnapshot() {
   return false;
 }
 
+/**
+ * Ob der Besucher hier überhaupt sprechen kann (Spracherkennung vorhanden
+ * und Mikrofon nicht gesperrt). Der Start-Bildschirm bietet die beiden
+ * Sprachmodi nur dann an – sonst bleibt der Chat.
+ */
+export function useSpeechInputSupported() {
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
 export function useDictation({
   onResult,
   onStateChange,
