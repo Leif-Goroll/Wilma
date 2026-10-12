@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Netlify legt hier den kompletten Build ab (kompilierte Server-
+    // Handler, gebündelte Chunks) – ohne diesen Eintrag zerrt jeder
+    // `netlify deploy` Tausende falsche Meldungen in `npx eslint`.
+    ".netlify/**",
   ]),
 ]);
 

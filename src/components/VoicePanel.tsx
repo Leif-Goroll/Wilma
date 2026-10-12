@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AvatarStage from "@/components/AvatarStage";
 import { useDictation } from "@/hooks/useDictation";
 import { useLiveAvatar } from "@/hooks/useLiveAvatar";
@@ -9,6 +9,7 @@ import { createId } from "@/lib/id";
 import { toSpeakableText } from "@/lib/speakableText";
 import { GREETING, THINKING_CUES } from "@/lib/voiceLines";
 import { sendMessage } from "@/lib/wilsonChannel";
+import { track } from "@/lib/analytics/track";
 import type { WilmaAvatarState } from "@/components/WilmaAvatar";
 import type { WilsonAction } from "@/lib/types";
 
@@ -24,8 +25,8 @@ import type { WilsonAction } from "@/lib/types";
  * `[ACTION:…]`-Marker funktionieren im Gespräch genauso wie im Chat.
  *
  * Die Verbindung startet von selbst, sobald das Panel erscheint – die
- * bewusste Entscheidung fällt vorher im Menü ("Sprechen" statt
- * "Schreiben"). Zurück oder Schließen beendet die Sitzung und damit die
+ * bewusste Entscheidung fällt vorher auf dem Start-Bildschirm ("Gespräch
+ * starten"). Zurück oder Schließen beendet die Sitzung und damit die
  * Abrechnung.
  */
 
@@ -40,18 +41,23 @@ interface VoicePanelProps {
   /** Greenscreen ausstanzen – nur nötig bei Avataren ohne Hintergrund. */
   chromaKey: boolean;
   onStateChange: (state: WilmaAvatarState) => void;
-  onSwitchToChat: () => void;
+  /** Zurück zum Start-Bildschirm – es gibt keinen Chat mehr, in den man
+   *  stattdessen wechseln könnte. */
+  onBack: () => void;
 }
 
 export default function VoicePanel({
   chromaKey,
   onStateChange,
-  onSwitchToChat,
+  onBack,
 }: VoicePanelProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [lastAction, setLastAction] = useState<WilsonAction | undefined>();
   const [sessionId] = useState(createId);
+  // Beginn der Sprachsitzung: Daraus wird beim Verlassen die Dauer gemeldet,
+  // die einzige Zahl im Dashboard, die direkt Geld kostet (Credits je Minute).
+  const voiceStartedAt = useRef<number | null>(null);
 
   const {
     connection,
@@ -69,8 +75,18 @@ export default function VoicePanel({
   useEffect(() => {
     prepare();
     void start(GREETING);
+    voiceStartedAt.current = Date.now();
+    track("voice_start");
+
     return () => {
       void stop();
+      const startedAt = voiceStartedAt.current;
+      voiceStartedAt.current = null;
+      if (startedAt) {
+        track("voice_end", {
+          value: Math.round((Date.now() - startedAt) / 1000),
+        });
+      }
     };
   }, [prepare, start, stop]);
 
@@ -89,7 +105,7 @@ export default function VoicePanel({
       }, THINKING_CUE_DELAY_MS);
 
       try {
-        const reply = await sendMessage(text, sessionId);
+        const reply = await sendMessage(text, sessionId, "voice");
         replyArrived = true;
         clearTimeout(cue);
         setLastAction(reply.action);
@@ -209,10 +225,10 @@ export default function VoicePanel({
                 )}
                 <button
                   type="button"
-                  onClick={onSwitchToChat}
+                  onClick={onBack}
                   className="text-xs font-semibold text-[#22D3EE] underline underline-offset-4 hover:opacity-80"
                 >
-                  Stattdessen schreiben
+                  Zurück
                 </button>
               </div>
             </>
@@ -310,18 +326,20 @@ export default function VoicePanel({
               )}
             </button>
           ) : (
-            // Die Spracherkennung läuft nur in Chrome und Edge. Statt eines
-            // Knopfs, der nichts tut, der Weg in den Chat.
+            // Die Spracherkennung läuft nur in Chrome und Edge. Ohne Chat
+            // als Ausweichmöglichkeit bleibt hier nur der Hinweis und der
+            // Rückweg – auf anderen Browsern ist das ein echter Dead-End,
+            // dessen sollte man sich bewusst sein.
             <div className="flex flex-col items-center gap-2 rounded-xl bg-black/55 px-4 py-3 text-center backdrop-blur-sm">
               <p className="text-xs text-white">
                 Sprechen funktioniert in Chrome oder Edge.
               </p>
               <button
                 type="button"
-                onClick={onSwitchToChat}
+                onClick={onBack}
                 className="text-xs font-semibold text-[#22D3EE] underline underline-offset-4 hover:opacity-80"
               >
-                Stattdessen schreiben
+                Zurück
               </button>
             </div>
           )}

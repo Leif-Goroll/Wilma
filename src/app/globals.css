@@ -132,3 +132,21 @@ body {
     animation: none;
   }
 }
+
+/* --- Einbettung per iframe (WordPress & Co.) ----------------------------
+   Das Widget hängt hier an dieser Bühne statt am Ansichtsfenster. Die
+   Bühne ist absichtlich größer als das iframe zu Beginn: So nimmt das
+   Widget immer seine natürliche Größe an, lässt sich ausmessen – und das
+   Lade-Skript schneidet das iframe erst danach passend zu. Andersherum
+   ginge es nicht: In einem 96 px schmalen iframe könnte die Sprechblase
+   nie ihre volle Breite zeigen.
+
+   Unten und rechts bündig mit dem iframe, damit die 16 px Abstand des
+   Widgets auch die Abstände zur Seitenkante sind. */
+.wilma-embed-stage {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 26rem;
+  height: 45rem;
+}

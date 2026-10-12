@@ -11,6 +11,7 @@ import type { WilmaAvatarState } from "@/components/WilmaAvatar";
 import type { DictationState } from "@/hooks/useDictation";
 import { createId } from "@/lib/id";
 import { sendMessage } from "@/lib/wilsonChannel";
+import { track } from "@/lib/analytics/track";
 import type { ChatMessage } from "@/lib/types";
 import {
   QUALIFICATION_SLIDERS,
@@ -76,6 +77,12 @@ export default function ChatWindow({
   useEffect(() => {
     onStateChange?.(wilmaState);
   }, [wilmaState, onStateChange]);
+
+  // Wie oft diktiert statt getippt wird, entscheidet mit darüber, ob sich
+  // der Sprachmodus lohnt – also mitzählen.
+  useEffect(() => {
+    if (dictationState === "recording") track("dictation", { mode: "chat" });
+  }, [dictationState]);
 
   async function handleSend(text: string) {
     const userMessage: ChatMessage = {

@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { logMessage } from "@/lib/analytics/messages";
 
 const WEBHOOK_URL = process.env.WILSON_WEBHOOK_URL;
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -6,6 +7,36 @@ const REQUEST_TIMEOUT_MS = 20_000;
 interface WilsonRequestBody {
   message?: unknown;
   sessionId?: unknown;
+  /**
+   * Begleitangaben für die Auswertung (siehe src/lib/analytics). Getrennt
+   * von `sessionId`: Die gehört n8n und klammert dort den Gesprächsverlauf,
+   * die Auswertung zählt dagegen je Besuch – auch über einen Wechsel
+   * zwischen Schreiben und Sprechen hinweg.
+   */
+  track?: unknown;
+}
+
+interface TrackInfo {
+  session?: string;
+  client?: string;
+  mode?: string;
+  /** Host der Gastgeberseite – nicht unserer. */
+  host?: string;
+}
+
+function readTrackInfo(value: unknown): TrackInfo {
+  if (!value || typeof value !== "object") return {};
+  const record = value as Record<string, unknown>;
+  const pick = (key: string) =>
+    typeof record[key] === "string" && record[key].trim()
+      ? (record[key] as string).trim().slice(0, 64)
+      : undefined;
+  return {
+    session: pick("session"),
+    client: pick("client"),
+    mode: pick("mode"),
+    host: pick("host"),
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -32,14 +63,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Nachricht fehlt." }, { status: 400 });
   }
 
+  // Die Kundenzuordnung kommt aus der Nachricht selbst: Die `referer`-
+  // Kopfzeile zeigt bei der Einbettung auf unsere eigene /embed-Seite und
+  // sagt nichts darüber aus, auf wessen Website Wilma steht.
+  const track = readTrackInfo(body.track);
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const startedAt = Date.now();
 
   try {
     const webhookResponse = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, sessionId }),
+      // `analytics` ist Beiwerk für n8n: Damit kann der Workflow das, was
+      // nur er weiß (benutzte Wissensbausteine, Modellkosten, ob überhaupt
+      // eine Antwort gefunden wurde), demselben Besuch zuordnen wie das
+      // Dashboard. n8n darf das Feld ignorieren – es ändert nichts am
+      // bisherigen Vertrag aus `message` und `sessionId`.
+      body: JSON.stringify({
+        message,
+        sessionId,
+        analytics: {
+          session: track.session,
+          client: track.client,
+          mode: track.mode,
+        },
+      }),
       signal: controller.signal,
     });
 
@@ -51,7 +101,31 @@ export async function POST(request: NextRequest) {
 
     const extracted = await extractReply(webhookResponse);
     const { reply, action } = stripActionMarker(extracted.reply);
-    return NextResponse.json({ reply, action: action ?? extracted.action });
+    const finalAction = action ?? extracted.action;
+    const latencyMs = Date.now() - startedAt;
+
+    // Erst antworten, dann mitschreiben: Die Auswertung darf das Gespräch
+    // nicht verlangsamen.
+    if (track.session) {
+      after(async () => {
+        const common = {
+          session: track.session!,
+          client: track.client,
+          host: track.host,
+          mode: track.mode,
+        };
+        await logMessage({ ...common, role: "user", content: message });
+        await logMessage({
+          ...common,
+          role: "wilma",
+          content: reply,
+          action: finalAction,
+          latencyMs,
+        });
+      });
+    }
+
+    return NextResponse.json({ reply, action: finalAction });
   } catch (error) {
     console.error("Fehler beim Aufruf des Wilson-Webhooks:", error);
     return NextResponse.json(

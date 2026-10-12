@@ -23,8 +23,33 @@ interface UseDictationOptions {
 function subscribe() {
   return () => {};
 }
+
+/**
+ * Ist das Widget auf einer fremden Seite eingebettet, kann diese das
+ * Mikrofon für Rahmen sperren – manche WordPress-Sicherheits-Plugins tun
+ * das über eine eigene `Permissions-Policy`. Die Spracherkennung liefe
+ * dann ins Leere, ohne dass der Besucher erführe warum. Steht die Sperre
+ * fest, wird der Mikrofonknopf deshalb gar nicht erst angeboten.
+ *
+ * Browser ohne diese Abfrage (Firefox, Safari) gelten als erlaubt:
+ * "unbekannt" ist kein "nein".
+ */
+function microphoneAllowed() {
+  const policy = document.permissionsPolicy ?? document.featurePolicy;
+  if (!policy) return true;
+
+  try {
+    return policy.allowsFeature("microphone");
+  } catch {
+    return true;
+  }
+}
+
 function getSnapshot() {
-  return Boolean(window.SpeechRecognition ?? window.webkitSpeechRecognition);
+  const supported = Boolean(
+    window.SpeechRecognition ?? window.webkitSpeechRecognition,
+  );
+  return supported && microphoneAllowed();
 }
 function getServerSnapshot() {
   return false;

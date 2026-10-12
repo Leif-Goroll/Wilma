@@ -1,0 +1,77 @@
+/**
+ * Farbtokens des Dashboards.
+ *
+ * Wilma ist durchgehend dunkel, deshalb gibt es hier nur einen Modus – die
+ * Werte sind für die dunkle Fläche gewählt und geprüft, nicht aus einer
+ * hellen Palette umgerechnet.
+ *
+ * Die vier Serienfarben sind als Satz gegen die Kartenfläche (#132a4a)
+ * geprüft: Helligkeitsband, Farbsättigung, Abstand bei Farbfehlsichtigkeit
+ * und Kontrast. Sie werden in dieser Reihenfolge vergeben und niemals
+ * durchgewechselt – eine Reihe behält ihre Farbe, auch wenn eine andere
+ * wegfällt.
+ *
+ * Das Markenblau #22D3EE steht bewusst NICHT als Serienfarbe zur Verfügung:
+ * Es ist zu hell für den geprüften Satz. Es bleibt der Oberfläche
+ * vorbehalten (aktive Schalter, Verweise, Fokusrahmen).
+ */
+
+.wilma-dash {
+  color-scheme: dark;
+
+  --surface-0: #0e1f37; /* Seitenfläche */
+  --surface-1: #132a4a; /* Karten */
+  --surface-2: #16294a; /* Hervorhebung innerhalb einer Karte */
+  --border: #1f3b5c;
+
+  --ink-1: #ffffff;
+  --ink-2: #cbd5e1;
+  --ink-3: #94a3b8;
+
+  --grid: #1f3b5c;
+  --accent: #22d3ee;
+
+  --series-1: #1599b4;
+  --series-2: #c98500;
+  --series-3: #9085e9;
+  --series-4: #d55181;
+
+  /* Eine Farbe, hell nach dunkel – für Größenordnungen (Heatmap, Trichter). */
+  --seq-5: #a5eefa;
+  --seq-4: #6fd9ee;
+  --seq-3: #3fc0dc;
+  --seq-2: #1f9fbe;
+  --seq-1: #16788f;
+  /* Für "kein Wert": sichtbar genug fürs Raster, leise genug, um nicht
+     mit dem kleinsten Datenwert verwechselt zu werden. */
+  --seq-0: #1a3052;
+
+  --good: #2fb36b;
+  --bad: #e05c5c;
+}
+
+/* Gitternetz und Achsen bleiben Haarlinien und treten zurück: Die Daten
+   sind das Einzige, was laut sein darf. */
+.wilma-dash .grid-line {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+
+.wilma-dash .axis-label {
+  fill: var(--ink-3);
+  font-size: 11px;
+}
+
+/* Beim Nachladen hält das Diagramm sein vorheriges Bild, nur blasser –
+   kein Platzhalter, kein Springen des Layouts. */
+.wilma-dash[data-pending="true"] .dash-content {
+  opacity: 0.55;
+  transition: opacity 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wilma-dash * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

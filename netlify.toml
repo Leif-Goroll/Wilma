@@ -1,0 +1,10 @@
+# Eigene Netlify-Konfiguration für dieses Projekt.
+#
+# Sie muss hier stehen, auch wenn Netlify Next.js von selbst erkennt: Die
+# CLI sucht ihre Konfiguration aufwärts im Verzeichnisbaum, und in
+# ~/.netlify liegt eine verirrte Datei mit "publish = /Users/leif". Ohne
+# diese Datei würde ein Deploy von hier aus das gesamte
+# Home-Verzeichnis veröffentlichen.
+[build]
+  command = "npm run build"
+  publish = ".next"

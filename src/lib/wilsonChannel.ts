@@ -1,4 +1,6 @@
 import type { WilsonAction } from "@/lib/types";
+import { analyticsSessionId, clientSlug, pageHost } from "@/lib/analytics/track";
+import type { WilmaMode } from "@/lib/analytics/track";
 
 /**
  * Kanal-Adapter für Wilson: kapselt, wie eine Nutzernachricht die Fachlogik
@@ -24,13 +26,26 @@ const KNOWN_ACTIONS: readonly WilsonAction[] = [
 
 export async function sendMessage(
   text: string,
-  sessionId: string
+  sessionId: string,
+  mode: WilmaMode = "chat"
 ): Promise<WilsonReply> {
   try {
     const response = await fetch("/api/wilson", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, sessionId }),
+      body: JSON.stringify({
+        message: text,
+        sessionId,
+        // Nur fürs Dashboard: Frage, Antwort und Antwortzeit werden
+        // serverseitig mitgeschrieben. `sessionId` bleibt davon unberührt,
+        // die gehört weiterhin n8n.
+        track: {
+          session: analyticsSessionId(),
+          client: clientSlug(),
+          host: pageHost(),
+          mode,
+        },
+      }),
     });
 
     if (!response.ok) {

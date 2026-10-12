@@ -15,7 +15,7 @@ export type WilmaAvatarState =
   | "speaking"
   | "offline";
 
-export type WilmaAvatarSize = "xs" | "sm" | "md" | "lg" | "xl";
+export type WilmaAvatarSize = "xs" | "sm" | "md" | "lg" | "xl" | "2xl";
 
 const SIZES: Record<
   WilmaAvatarSize,
@@ -62,6 +62,16 @@ const SIZES: Record<
     dot: "h-4 w-4",
     dotOffset: "bottom-1 right-1",
     initial: "text-3xl",
+  },
+  /** Nur für den geschlossenen Launcher auf fremden Seiten. Responsiv: auf
+   *  dem Handy ist wenig Platz, dort 30 % kleiner als die 224px-Basis
+   *  (9,8rem); auf dem Desktop ist mehr Raum, dort 20 % größer (16,8rem). */
+  "2xl": {
+    box: "h-[9.8rem] w-[9.8rem] sm:h-[16.8rem] sm:w-[16.8rem]",
+    px: 224,
+    dot: "h-4 w-4 sm:h-5 sm:w-5",
+    dotOffset: "bottom-1.5 right-1.5 sm:bottom-2 sm:right-2",
+    initial: "text-5xl sm:text-6xl",
   },
 };
 

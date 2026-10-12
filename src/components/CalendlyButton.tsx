@@ -1,5 +1,8 @@
 "use client";
 
+import { isEmbedded, postFrameState } from "@/lib/embedFrame";
+import { track } from "@/lib/analytics/track";
+
 declare global {
   interface Window {
     Calendly?: {
@@ -10,12 +13,40 @@ declare global {
 
 const CALENDLY_URL = process.env.NEXT_PUBLIC_CALENDLY_URL;
 
+/**
+ * Calendly legt sein Buchungsformular als Overlay über die ganze Seite.
+ * In der Einbettung ist "die ganze Seite" aber nur das schmale iframe des
+ * Widgets – das Formular wäre unbenutzbar. Deshalb wird das iframe für die
+ * Dauer der Buchung auf Vollbild gesetzt und danach wieder zusammen-
+ * gefaltet.
+ */
+function expandFrameWhileBooking() {
+  if (!isEmbedded()) return;
+
+  postFrameState("overlay");
+
+  const observer = new MutationObserver(() => {
+    if (document.querySelector(".calendly-overlay")) return;
+
+    observer.disconnect();
+    // Zurück in den Zustand, aus dem heraus gebucht wurde: Das Widget war
+    // offen, sonst wäre der Button nicht sichtbar gewesen.
+    postFrameState("open");
+  });
+
+  observer.observe(document.body, { childList: true });
+}
+
 export default function CalendlyButton() {
   if (!CALENDLY_URL) {
     return null;
   }
 
   function openCalendly() {
+    // Das Öffnen des Buchungsformulars ist die aussagekräftigste Größe im
+    // Dashboard: Bis hierher hat das Gespräch getragen.
+    track("booking");
+    expandFrameWhileBooking();
     window.Calendly?.initPopupWidget({ url: CALENDLY_URL! });
   }
 

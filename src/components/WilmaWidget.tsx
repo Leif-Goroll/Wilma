@@ -1,20 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import ChatWindow from "@/components/ChatWindow";
 import VoicePanel from "@/components/VoicePanel";
 import WilmaAvatar, { type WilmaAvatarState } from "@/components/WilmaAvatar";
+import { track, trackSessionEnd } from "@/lib/analytics/track";
 
 /**
  * Schwebendes Wilma-Widget unten rechts.
  *
- * Ablauf: geschlossene Blase → Auswahl „Schreiben oder Sprechen“ → Chat
- * bzw. Sprachmodus. Die Auswahl ist bewusst ein eigener Schritt: Schreiben
- * läuft über n8n und kostet nichts, Sprechen verbraucht LiveAvatar-Credits
- * pro Minute. Niemand soll versehentlich im teuren Modus landen.
+ * Ablauf: geschlossene Blase → Start-Bildschirm mit einem einzigen Knopf
+ * ("Gespräch starten") → Sprachmodus. Der Zwischenschritt bleibt bewusst
+ * bestehen, obwohl es nur noch einen Weg gibt: Sprechen verbraucht
+ * LiveAvatar-Credits pro Minute, ein Klick auf die Blase selbst darf also
+ * nicht schon die Verbindung auslösen.
  */
 
-type WidgetView = "menu" | "chat" | "voice";
+type WidgetView = "start" | "voice";
 
 /**
  * Verzögerung, bevor die Sprechblase erscheint. Sofort wirkt aufdringlich;
@@ -40,22 +41,33 @@ interface WilmaWidgetProps {
   voiceEnabled: boolean;
   /** Greenscreen des Avatars im Browser ausstanzen. */
   chromaKey: boolean;
+  /**
+   * Im iframe (Einbettung auf einer fremden Seite) hängt das Widget an
+   * seiner Bühne statt am Ansichtsfenster – nur so lässt sich seine
+   * natürliche Größe messen, bevor das iframe darauf zugeschnitten wird.
+   * Die Abstände bleiben dabei konstant bei 16 px, damit das Lade-Skript
+   * nicht raten muss.
+   */
+  embedded?: boolean;
+  /** Zum Ausmessen des Widgets von außen. */
+  containerRef?: React.Ref<HTMLDivElement>;
+  /** Meldet, ob das Panel offen ist – die Einbettung richtet sich danach. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 export default function WilmaWidget({
   voiceEnabled,
   chromaKey,
+  embedded = false,
+  containerRef,
+  onOpenChange,
 }: WilmaWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [view, setView] = useState<WidgetView>("menu");
+  const [view, setView] = useState<WidgetView>("start");
   const [showTeaser, setShowTeaser] = useState(false);
   const [wilmaState, setWilmaState] = useState<WilmaAvatarState>("online");
   const panelRef = useRef<HTMLDivElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
-
-  // Der Chat bleibt beim Wechsel auf „Sprechen“ montiert, damit der
-  // Gesprächsverlauf beim Zurückwechseln nicht verloren geht.
-  const [chatStarted, setChatStarted] = useState(false);
 
   useEffect(() => {
     try {
@@ -65,7 +77,10 @@ export default function WilmaWidget({
       // eben bei jedem Seitenaufruf zeigen.
     }
 
-    const timer = setTimeout(() => setShowTeaser(true), TEASER_DELAY_MS);
+    const timer = setTimeout(() => {
+      setShowTeaser(true);
+      track("teaser");
+    }, TEASER_DELAY_MS);
     return () => clearTimeout(timer);
   }, []);
 
@@ -77,6 +92,28 @@ export default function WilmaWidget({
       // Privater Modus o. Ä. – dann erscheint der Teaser eben erneut.
     }
   }, []);
+
+  useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
+
+  // Fürs Dashboard: einmal je Besuch zählen, dass Wilma zu sehen war, und
+  // beim Verlassen die Gesamtdauer nachmelden. `pagehide` statt `unload` –
+  // nur das greift zuverlässig, wenn der Browser die Seite in seinen
+  // Zwischenspeicher legt (Zurück-Knopf).
+  useEffect(() => {
+    track("impression");
+    window.addEventListener("pagehide", trackSessionEnd);
+    return () => window.removeEventListener("pagehide", trackSessionEnd);
+  }, []);
+
+  // Der erste Durchlauf ist der geschlossene Ausgangszustand, kein Schließen.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (isOpen) track("open");
+    else if (wasOpen.current) track("close");
+    wasOpen.current = isOpen;
+  }, [isOpen]);
 
   // Escape schließt das Panel und gibt den Fokus zurück an die Blase.
   useEffect(() => {
@@ -94,49 +131,58 @@ export default function WilmaWidget({
   }, [isOpen]);
 
   /**
-   * Öffnet immer mit der Auswahl "Schreiben oder Sprechen", nie direkt in
-   * einem Modus. Sonst landete, wer zuletzt gesprochen hat, beim nächsten
-   * Öffnen gleich wieder im Sprachmodus – und der verbindet sich von
-   * selbst, würde also ungefragt Credits verbrauchen.
+   * Öffnet immer mit dem Start-Bildschirm, nie direkt im Sprachmodus. Der
+   * verbindet sich von selbst, sobald er montiert wird – würde also beim
+   * Öffnen ungefragt Credits verbrauchen, ohne diesen bewussten
+   * Zwischenschritt.
    */
   function openWidget() {
     dismissTeaser();
-    showMenu();
+    showStart();
     setIsOpen(true);
   }
 
-  function showMenu() {
-    setView("menu");
-    // Der Status stammt sonst noch aus dem verlassenen Modus, etwa
-    // "zurzeit nicht erreichbar" nach dem Beenden des Sprachmodus.
+  function showStart() {
+    setView("start");
+    // Der Status stammt sonst noch aus dem verlassenen Sprachmodus, etwa
+    // "zurzeit nicht erreichbar" nach dem Beenden des Gesprächs.
     setWilmaState("online");
   }
 
-  function startChat() {
-    setChatStarted(true);
-    setView("chat");
+  function startVoice() {
+    setView("voice");
+    track("mode", { mode: "voice" });
   }
 
   return (
     // text-left explizit: Das Widget soll auch auf zentriert gesetzten
     // Seiten gleich aussehen, es erbt sonst deren Textausrichtung.
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3 text-left sm:bottom-6 sm:right-6">
+    <div
+      ref={containerRef}
+      // Etwas höher als vorher (bottom-4/6 → bottom-8/10): Der Abstand zum
+      // unteren Rand hat sich vergrößert, seitlich bleibt es unverändert.
+      className={`${
+        embedded
+          ? "absolute bottom-8 right-4"
+          : "fixed bottom-8 right-4 sm:bottom-10 sm:right-6"
+      } z-50 flex flex-col items-end gap-3 text-left`}
+    >
       {isOpen && (
         <div
           ref={panelRef}
           role="dialog"
           aria-modal="false"
-          aria-label="Chat mit Wilma"
-          className="flex h-[min(34rem,calc(100dvh-6rem))] w-[min(23rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-[#1F3B5C] bg-[#0E1F37] shadow-2xl shadow-black/50"
+          aria-label="Gespräch mit Wilma"
+          className="flex h-[min(34rem,calc(100dvh-9rem))] w-[min(23rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-[#1F3B5C] bg-[#0E1F37] shadow-2xl shadow-black/50"
         >
           <div className="h-1 w-full shrink-0 bg-[#22D3EE]" />
 
           <header className="flex items-center gap-3 border-b border-[#1F3B5C] px-4 py-3">
-            {view !== "menu" && (
+            {view !== "start" && (
               <button
                 type="button"
-                onClick={showMenu}
-                aria-label="Zurück zur Auswahl"
+                onClick={showStart}
+                aria-label="Zurück"
                 className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#94A3B8] transition-colors hover:bg-[#16294a] hover:text-white"
               >
                 <svg
@@ -168,7 +214,7 @@ export default function WilmaWidget({
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              aria-label="Chat schließen"
+              aria-label="Gespräch schließen"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#94A3B8] transition-colors hover:bg-[#16294a] hover:text-white"
             >
               <svg
@@ -185,26 +231,15 @@ export default function WilmaWidget({
             </button>
           </header>
 
-          {view === "menu" && (
-            <ModeMenu
-              voiceEnabled={voiceEnabled}
-              onChat={startChat}
-              onVoice={() => setView("voice")}
-            />
-          )}
-
-          {/* Versteckt statt ausgehängt: der Verlauf überlebt den Moduswechsel. */}
-          {chatStarted && (
-            <div className="min-h-0 flex-1" hidden={view !== "chat"}>
-              <ChatWindow embedded onStateChange={setWilmaState} />
-            </div>
+          {view === "start" && (
+            <StartScreen voiceEnabled={voiceEnabled} onStart={startVoice} />
           )}
 
           {view === "voice" && (
             <VoicePanel
               chromaKey={chromaKey}
               onStateChange={setWilmaState}
-              onSwitchToChat={startChat}
+              onBack={showStart}
             />
           )}
         </div>
@@ -212,8 +247,8 @@ export default function WilmaWidget({
 
       {!isOpen && showTeaser && (
         <div className="wilma-teaser flex items-end gap-2">
-          {/* Führt – wie der Launcher – immer erst zur Auswahl zwischen
-              Schreiben und Sprechen, nie direkt in einen Modus. */}
+          {/* Führt – wie der Launcher – immer erst zum Start-Bildschirm,
+              nie direkt in den Sprachmodus. */}
           <button
             type="button"
             onClick={openWidget}
@@ -271,9 +306,22 @@ export default function WilmaWidget({
         onClick={() => (isOpen ? setIsOpen(false) : openWidget())}
         aria-expanded={isOpen}
         aria-label={
-          isOpen ? "Chat mit Wilma schließen" : "Chat mit Wilma öffnen"
+          isOpen ? "Gespräch mit Wilma schließen" : "Gespräch mit Wilma öffnen"
         }
-        className="flex h-16 w-16 items-center justify-center rounded-full transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#22D3EE] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0E1F37]"
+        // Genau so groß wie der Avatar darin, responsiv: 9,8rem auf dem
+        // Handy (30 % kleiner als die 14rem-Basis), 16,8rem auf dem Desktop
+        // (20 % größer) – das offene Chatfenster mit seinem Schließen-Knopf
+        // bleibt davon unberührt.
+        //
+        // Schaltfläche und Bildfläche sind immer exakt gleich groß: Sonst
+        // ragt Wilma über den klickbaren Bereich hinaus, klebt randlos in
+        // der Bildschirmecke – und in der Einbettung wird sie an der
+        // iframe-Kante abgeschnitten.
+        className={`flex items-center justify-center transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#22D3EE] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0E1F37] ${
+          isOpen
+            ? "h-28 w-28 rounded-full"
+            : "h-[9.8rem] w-[9.8rem] sm:h-[16.8rem] sm:w-[16.8rem]"
+        }`}
       >
         {isOpen ? (
           <span className="flex h-14 w-14 items-center justify-center rounded-full border border-[#1F3B5C] bg-[#132a4a] text-white shadow-xl shadow-black/40">
@@ -290,93 +338,75 @@ export default function WilmaWidget({
             </svg>
           </span>
         ) : (
-          <WilmaAvatar state="online" size="xl" showStatus preload />
+          <WilmaAvatar state="online" size="2xl" showStatus preload />
         )}
       </button>
     </div>
   );
 }
 
-interface ModeMenuProps {
+interface StartScreenProps {
+  /**
+   * Nur gesetzt, wenn serverseitig ein LiveAvatar-Key und eine Avatar-ID
+   * hinterlegt sind. Ohne das gibt es nichts, das der Knopf starten könnte.
+   */
   voiceEnabled: boolean;
-  onChat: () => void;
-  onVoice: () => void;
+  onStart: () => void;
 }
 
 /**
- * Einstiegsauswahl. Schreiben steht bewusst oben und ohne Einschränkung –
- * es ist der Normalfall; Sprechen ist der bewusste Zusatzschritt.
+ * Start-Bildschirm: ein einziger Knopf, der das Gespräch samt
+ * Verbindungsaufbau auslöst. Bewusst ein eigener Schritt statt eines
+ * Direktstarts beim Öffnen – Sprechen kostet LiveAvatar-Credits pro
+ * Minute, das soll nie ungefragt passieren.
  */
-function ModeMenu({ voiceEnabled, onChat, onVoice }: ModeMenuProps) {
+function StartScreen({ voiceEnabled, onStart }: StartScreenProps) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-5">
-      <p className="text-sm text-[#CBD5E1]">
-        Guten Tag! Ich bin Wilma, die digitale Büroassistentin von Future AI
-        Solutions. Wie möchten Sie mit mir sprechen?
-      </p>
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 py-5 text-center">
+      <WilmaAvatar state="online" size="lg" />
 
-      <button
-        type="button"
-        onClick={onChat}
-        className="flex items-start gap-3 rounded-xl border border-[#1F3B5C] bg-[#132a4a] p-4 text-left transition-colors hover:border-[#22D3EE]"
-      >
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#22D3EE] text-[#0E1F37]">
-          <svg
-            viewBox="0 0 24 24"
-            className="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
+      {voiceEnabled ? (
+        <>
+          <p className="text-sm text-[#CBD5E1]">
+            Guten Tag! Ich bin Wilma, die digitale Büroassistentin von
+            Future AI Solutions. Starten Sie das Gespräch, sobald Sie
+            bereit sind.
+          </p>
+
+          <button
+            type="button"
+            onClick={onStart}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22D3EE] px-4 py-3 text-sm font-semibold text-[#0E1F37] transition-opacity hover:opacity-90"
           >
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-        </span>
-        <span className="min-w-0">
-          <span className="block text-sm font-semibold text-white">
-            Schreiben
-          </span>
-          <span className="mt-0.5 block text-xs text-[#94A3B8]">
-            Ganz normal tippen oder das Mikrofon zum Diktieren nutzen.
-          </span>
-        </span>
-      </button>
-
-      {voiceEnabled && (
-        <button
-          type="button"
-          onClick={onVoice}
-          className="flex items-start gap-3 rounded-xl border border-[#1F3B5C] bg-[#132a4a] p-4 text-left transition-colors hover:border-[#22D3EE]"
-        >
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#67E8F9] text-[#0E1F37]">
             <svg
               viewBox="0 0 24 24"
-              className="h-5 w-5"
+              className="h-4 w-4"
               fill="none"
               stroke="currentColor"
               strokeWidth={2}
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d="m22 8-6 4 6 4V8Z" />
-              <rect x="2" y="6" width="14" height="12" rx="2" />
+              <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" />
+              <path d="M19 11a7 7 0 0 1-14 0" />
+              <path d="M12 18v3" />
             </svg>
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold text-white">
-              Sprechen
-            </span>
-            <span className="mt-0.5 block text-xs text-[#94A3B8]">
-              Wilma antwortet Ihnen live per Video.
-            </span>
-          </span>
-        </button>
-      )}
+            Gespräch starten
+          </button>
 
-      <p className="mt-auto pt-2 text-[11px] leading-relaxed text-[#64748B]">
-        Sie sprechen mit einer KI.
-      </p>
+          <p className="pt-2 text-[11px] leading-relaxed text-[#64748B]">
+            Sie sprechen mit einer KI.
+          </p>
+        </>
+      ) : (
+        // Ohne LiveAvatar-Zugangsdaten gibt es nichts, das der Knopf
+        // starten könnte – lieber das offen zeigen als einen Knopf
+        // anzubieten, der beim Klick nur ins Leere liefe.
+        <p className="text-sm text-[#94A3B8]">
+          Wilma ist im Moment nicht erreichbar. Bitte versuchen Sie es
+          später erneut.
+        </p>
+      )}
     </div>
   );
 }

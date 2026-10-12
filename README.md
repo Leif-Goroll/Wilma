@@ -142,12 +142,157 @@ startet die Aufnahme, ein erneuter Klick beendet sie:
 3. Das bereinigte Ergebnis landet im Eingabefeld – der Nutzer kann es noch anpassen,
    bevor er sendet.
 
+Der Knopf erscheint außerdem nur, wenn die Seite das Mikrofon überhaupt
+freigibt. Eingebettet auf einer fremden Seite kann die es sperren – dann
+wäre der Knopf da, würde aber nichts tun. Browser, die diese Abfrage nicht
+kennen (Firefox, Safari), gelten als erlaubt: "unbekannt" ist kein "nein".
+
 Die Bereinigung läuft standardmäßig über eine einfache lokale Heuristik
 ([`src/lib/transcriptCleanup.ts`](src/lib/transcriptCleanup.ts)). Für richtig
 "schlaue", grammatikalisch saubere Umformulierung per LLM kannst du optional
 `WILSON_TRANSCRIPT_WEBHOOK_URL` auf einen n8n-Workflow zeigen lassen (gleiches
 Proxy-Prinzip wie bei `WILSON_WEBHOOK_URL`); ist die Variable nicht gesetzt, greift
 automatisch die lokale Heuristik.
+
+## Einbetten auf einer WordPress-Seite
+
+Wilma läuft als eigene Anwendung; WordPress bindet sie nur ein. Das muss so
+sein, weil die API-Schlüssel (n8n, LiveAvatar, ElevenLabs) serverseitig
+bleiben müssen – klassisches WordPress-Hosting kann das nicht, es kennt
+nur PHP.
+
+### 1. App veröffentlichen
+
+Wilma braucht einen laufenden Node-Server, klassisches WordPress-Hosting
+kann das nicht. Netlify und Vercel können es beide; hier der Weg über
+Netlify (Next.js 16 wird über den OpenNext-Adapter ohne Zusatz-
+konfiguration unterstützt):
+
+```bash
+npx netlify login
+npx netlify init      # neues Projekt anlegen
+npx netlify deploy --prod
+```
+
+Danach im Netlify-Projekt unter **Site configuration → Environment
+variables** alle Werte aus der eigenen `.env.local` eintragen und einmal
+neu bauen lassen. Nötig sind mindestens `WILSON_WEBHOOK_URL` und
+`NEXT_PUBLIC_CALENDLY_URL`, für den Sprachmodus zusätzlich
+`HEYGEN_API_KEY`, `LIVEAVATAR_AVATAR_ID` und `ELEVENLABS_API_KEY`.
+
+> `WILMA_ALLOWED_ORIGINS` wird beim **Bauen** gelesen, nicht beim
+> Ausliefern. Nach jeder Änderung daran muss neu gebaut werden.
+
+Heraus kommt eine Adresse wie `https://wilma.netlify.app`. Unter dieser
+Adresse liegen ab sofort zwei neue Dinge:
+
+| Adresse | Zweck |
+|---|---|
+| `/widget.js` | Das Lade-Skript, das WordPress einbindet |
+| `/embed` | Das Widget allein, ohne Umgebung – landet im iframe |
+
+Direkt nach dem ersten Deploy prüfen, ob die Einbettungssperre wirklich
+ankommt:
+
+```bash
+curl -sI https://IHRE-ADRESSE.netlify.app/embed | grep -i content-security-policy
+```
+
+Kommt nichts zurück, reicht Netlify die `headers()` aus
+[`next.config.ts`](next.config.ts) nicht durch. Dann dieselbe Kopfzeile
+zusätzlich in eine `netlify.toml` im Projektstamm schreiben:
+
+```toml
+[[headers]]
+  for = "/embed"
+  [headers.values]
+    Content-Security-Policy = "frame-ancestors https://ihre-firma.de https://www.ihre-firma.de;"
+```
+
+### 2. In WordPress einbinden
+
+Ist ein Snippet-Plugin wie **WPCode** installiert, geht es am schnellsten
+darüber: *Code-Snippets → Snippet hinzufügen → eigener Code (leer)*,
+Codetyp **HTML-Snippet**, die Skriptzeile von unten einfügen, *Automatisch
+einfügen → Seitenweit Footer*, aktiv schalten, speichern.
+
+Ohne Snippet-Plugin als kleines eigenes Plugin – es überlebt jeden
+Theme-Wechsel:
+
+1. In [`wordpress/wilma-widget/wilma-widget.php`](wordpress/wilma-widget/wilma-widget.php)
+   die Zeile `const WILMA_APP_URL = ...` auf die eigene Vercel-Adresse
+   ändern.
+2. Den Ordner `wilma-widget` als ZIP packen.
+3. In WordPress: **Plugins → Installieren → Plugin hochladen**, ZIP
+   auswählen, aktivieren.
+
+Wer lieber ohne Plugin arbeitet, fügt stattdessen diese eine Zeile in den
+Fußbereich des Themes ein (oder in ein Snippet-Plugin wie WPCode):
+
+```html
+<script src="https://IHRE-APP.vercel.app/widget.js" defer></script>
+```
+
+Mehr ist nicht nötig. Das Widget erscheint auf jeder Seite unten rechts.
+
+### 3. Einbettung auf die eigene Domain beschränken
+
+Solange `WILMA_ALLOWED_ORIGINS` nicht gesetzt ist, darf **jede** Seite das
+Widget einbauen – und Fremde würden dabei Ihre LiveAvatar-Credits
+verbrauchen. Sobald die Seite live ist, deshalb in Vercel setzen:
+
+```
+WILMA_ALLOWED_ORIGINS=https://ihre-firma.de,https://www.ihre-firma.de
+```
+
+Daraus wird die Kopfzeile `Content-Security-Policy: frame-ancestors …`
+für `/embed` ([`next.config.ts`](next.config.ts)). Beide Schreibweisen
+eintragen, mit und ohne `www` – sonst bleibt das Widget auf einer der
+beiden Varianten leer.
+
+### Wie die Einbettung funktioniert
+
+```
+WordPress-Seite
+  └─ widget.js  legt ein iframe unten rechts an
+       └─ /embed  zeigt das Widget, misst sich selbst
+            └─ meldet seine Maße per postMessage zurück
+```
+
+Der springende Punkt ist die Größe. Ein iframe fängt Klicks auf seiner
+ganzen Fläche ab, auch auf durchsichtigen Stellen – wäre es dauerhaft so
+groß wie das geöffnete Chatfenster, ließe sich die untere rechte Ecke der
+WordPress-Seite nie mehr benutzen. Das Widget meldet deshalb nach jeder
+Änderung, wie viel Platz es gerade braucht
+([`src/lib/embedFrame.ts`](src/lib/embedFrame.ts)), und `widget.js`
+schneidet das iframe darauf zu: 144 × 144 px für die bloße Blase, gut
+330 px für die Sprechblase, 400 × 700 px für das offene Fenster. Auf dem
+Telefon legt es sich über die ganze Seite.
+
+Damit das Messen überhaupt möglich ist, hängt das Widget im iframe an
+einer festen "Bühne" (`.wilma-embed-stage`) statt am Fenster. Sonst gäbe
+es ein Henne-Ei-Problem: In einem 144 px schmalen iframe könnte die
+Sprechblase ihre volle Breite nie annehmen und damit nie gemessen werden.
+
+### Worauf zu achten ist
+
+- **HTTPS ist Pflicht.** Ohne verschlüsselte Verbindung gibt kein Browser
+  das Mikrofon frei – weder Diktieren noch Sprachmodus würden gehen.
+- **Mikrofon.** `widget.js` fordert es über `allow="microphone"` beim
+  iframe an; das genügt Chrome und Edge auch über Domaingrenzen hinweg
+  (geprüft). Manche Sicherheits-Plugins (Wordfence, "Hardening"-
+  Einstellungen) senden aber eine eigene `Permissions-Policy` und nehmen
+  das Mikrofon für eingebettete Rahmen wieder aus. In dem Fall blendet
+  [`useDictation.ts`](src/hooks/useDictation.ts) den Mikrofonknopf von
+  selbst aus, statt ihn stumm scheitern zu lassen – Tippen geht weiter.
+  Wer diktieren können soll, erlaubt im Plugin `microphone` für fremde
+  Rahmen.
+- **Calendly.** Das Buchungsformular legt sich über die ganze Seite. Im
+  iframe wäre "die ganze Seite" nur das schmale Widget, deshalb fordert
+  [`CalendlyButton.tsx`](src/components/CalendlyButton.tsx) für die Dauer
+  der Buchung Vollbild an und faltet danach wieder zusammen.
+- **Caching-Plugins.** `widget.js` wird fünf Minuten zwischengespeichert.
+  Wer eine neue Fassung sofort sehen will, leert den WordPress-Cache.
 
 ## Nicht Teil dieser Version
 

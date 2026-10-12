@@ -47,4 +47,18 @@ declare global {
     SpeechRecognition?: new () => SpeechRecognition;
     webkitSpeechRecognition?: new () => SpeechRecognition;
   }
+
+  /**
+   * Abfrage der Permissions-Policy. Chrome und Edge kennen sie (unter dem
+   * alten Namen `featurePolicy`, inzwischen `permissionsPolicy`), Firefox
+   * und Safari nicht – deshalb überall optional.
+   */
+  interface PermissionsPolicyLike {
+    allowsFeature(feature: string): boolean;
+  }
+
+  interface Document {
+    permissionsPolicy?: PermissionsPolicyLike;
+    featurePolicy?: PermissionsPolicyLike;
+  }
 }
